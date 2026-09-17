@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Collier County Land Viewer</title>
+<title>Collier & Lee County Land Viewer</title>
 <style>
 /* required styles */
 
@@ -852,7 +852,7 @@ body{
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>Collier County Land Viewer</b><span>Proof of concept &middot; parcel boundaries &amp; ownership</span></div>
+  <div class="brand"><b>Collier &amp; Lee County Land Viewer</b><span>Parcel boundaries &amp; ownership &middot; 2025 tax roll</span></div>
 </div>
 
 <div id="loading">Loading parcels&hellip;</div>
@@ -876,7 +876,7 @@ body{
 </div>
 
 <div id="status">
-  <b>Heads up:</b> parcel lines here come from the county tax roll and are for general reference only &mdash; not a survey. Boundaries can be off by several feet. See the notes below the map for data sources and how to point this at Collier County's own live feed.
+  <b>Heads up:</b> parcel lines here come from the 2025 Florida DOR statewide tax roll (Collier &amp; Lee counties only) and are for general reference only &mdash; not a survey. Boundaries can be off by several feet.
 </div>
 <script>
 /* @preserve
@@ -890,21 +890,15 @@ body{
   "use strict";
 
   // ============================================================
-  // CONFIG — swap this out once you have Collier County's own
-  // live ArcGIS FeatureServer URL (see notes below the map).
-  // This default points at a public statewide Florida parcel
-  // layer (Dept. of Revenue tax-roll data via UF GeoPlan Center)
-  // that is queried live, filtered to whatever is on screen.
+  // CONFIG — parcels are loaded from static, pre-built tiles at
+  // tiles/<county>/<tx>_<ty>.json (built from the 2025 FL Dept. of
+  // Revenue statewide tax roll, Collier + Lee counties only).
+  // Same-origin static files — no live queries, no CORS, no JSONP.
   // ============================================================
   var CONFIG = {
-    // Tried in order; the first one that answers a live query wins.
-    PARCEL_SOURCES: [
-      "https://ags2.colliercountyfl.gov/gis/rest/services/agency/parcels/mapserver/0"
-    ],
     START_CENTER: [26.155, -81.55],
     START_ZOOM: 15,
-    MIN_PARCEL_ZOOM: 14,
-    PROBE_TIMEOUT_MS: 6000
+    MIN_PARCEL_ZOOM: 14
   };
 
   // Field names vary by source. We scan for the first match in
@@ -1024,137 +1018,88 @@ body{
     return html;
   }
 
-  var parcelLayer = null;
+  var TILE_SIZE = 0.02; // must match the tiling script that generated /tiles
+  var COUNTIES = ['collier', 'lee'];
+  var loadedTileKeys = {}; // "county:tx_ty" -> true once fetched (success or confirmed absent)
+  var tileLayers = {};     // "county:tx_ty" -> L.geoJSON layer, so we can remove/re-add on toggle
+
+  var parcelGroup = L.layerGroup();
   var parcelsOn = true;
   var statusEl = document.getElementById("status");
-  var jsonpCounter = 0;
 
   function setStatus(html){ statusEl.innerHTML = html; }
 
-  // JSONP loader: ArcGIS REST services support a "callback" query param
-  // that returns the JSON wrapped in a function call via a <script> tag
-  // instead of an XHR/fetch — this sidesteps CORS entirely, since the
-  // browser's CORS check only applies to fetch()/XHR, not script tags.
-  function jsonpRequest(url, timeoutMs){
-    return new Promise(function(resolve, reject){
-      var cbName = "__parcelJsonp" + (jsonpCounter++);
-      var script = document.createElement("script");
-      var done = false;
-      var timer = setTimeout(function(){
-        if (done) return;
-        done = true;
-        cleanup();
-        reject(new Error("timed out waiting for a response"));
-      }, timeoutMs);
-
-      function cleanup(){
-        clearTimeout(timer);
-        delete window[cbName];
-        if (script.parentNode) script.parentNode.removeChild(script);
+  function tileKeysForBounds(bounds){
+    var minTx = Math.floor(bounds.getWest() / TILE_SIZE);
+    var maxTx = Math.floor(bounds.getEast() / TILE_SIZE);
+    var minTy = Math.floor(bounds.getSouth() / TILE_SIZE);
+    var maxTy = Math.floor(bounds.getNorth() / TILE_SIZE);
+    var keys = [];
+    for (var tx = minTx; tx <= maxTx; tx++){
+      for (var ty = minTy; ty <= maxTy; ty++){
+        keys.push([tx, ty]);
       }
-
-      window[cbName] = function(data){
-        if (done) return;
-        done = true;
-        cleanup();
-        resolve(data);
-      };
-      script.onerror = function(){
-        if (done) return;
-        done = true;
-        cleanup();
-        reject(new Error("network error loading service"));
-      };
-      script.src = url + (url.indexOf("?") === -1 ? "?" : "&") + "callback=" + cbName;
-      document.head.appendChild(script);
-    });
-  }
-
-  function esriRingsToLatLngs(rings){
-    // Esri polygon rings -> Leaflet [ [ [lat,lng], ... ], ... ] per ring.
-    // Not fixing winding/holes here — fine for how parcels typically look.
-    return rings.map(function(ring){
-      return ring.map(function(pt){ return [pt[1], pt[0]]; });
-    });
-  }
-
-  function styleParcelAttrs(attrs){
-    var pub = isPublic(attrs || {});
-    return {
-      color: pub ? "#2f6b40" : "#a85f2c",
-      weight: 1.4,
-      opacity: 0.9,
-      fillColor: pub ? "#7fb08a" : "#e8a06a",
-      fillOpacity: 0.16
-    };
-  }
-
-  function queryParams(map){
-    var b = map.getBounds();
-    var envelope = JSON.stringify({
-      xmin: b.getWest(), ymin: b.getSouth(), xmax: b.getEast(), ymax: b.getNorth(),
-      spatialReference: { wkid: 4326 }
-    });
-    return "where=1%3D1&outFields=*&returnGeometry=true&geometry=" + encodeURIComponent(envelope) +
-      "&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects" +
-      "&resultRecordCount=1500&f=json";
-  }
-
-  function loadParcelsFor(url){
-    var group = L.layerGroup();
-    var loadedOnce = false;
-
-    function refresh(){
-      if (!parcelsOn || map.getZoom() < CONFIG.MIN_PARCEL_ZOOM) return;
-      bumpLoading(1);
-      jsonpRequest(url + "/query?" + queryParams(map), CONFIG.PROBE_TIMEOUT_MS)
-        .then(function(data){
-          bumpLoading(-1);
-          if (data && data.error){
-            setStatus("<b>Service error:</b> " + escapeHtml(data.error.message || "unknown error"));
-            return;
-          }
-          group.clearLayers();
-          var feats = (data && data.features) || [];
-          feats.forEach(function(f){
-            if (!f.geometry || !f.geometry.rings) return;
-            var latlngs = esriRingsToLatLngs(f.geometry.rings);
-            var poly = L.polygon(latlngs, styleParcelAttrs(f.attributes));
-            poly.bindPopup(buildPopup(f.attributes || {}));
-            group.addLayer(poly);
-          });
-          if (!loadedOnce){
-            loadedOnce = true;
-            setStatus(
-              "<b>Heads up:</b> parcel lines here come from Collier County's own GIS feed and are for general " +
-              "reference only &mdash; not a survey. Boundaries can be off by several feet. Zoom in if you don't " +
-              "see outlines yet &mdash; they only draw in close enough."
-            );
-          }
-        })
-        .catch(function(err){
-          bumpLoading(-1);
-          setStatus(
-            "<b>Couldn\u2019t load parcels.</b> " + escapeHtml(err.message || String(err)) +
-            ". Retrying on the next pan/zoom."
-          );
-        });
     }
-
-    map.on("moveend zoomend", refresh);
-    refresh();
-    return group;
+    return keys;
   }
 
-  parcelLayer = loadParcelsFor(CONFIG.PARCEL_SOURCES[0]);
-  parcelLayer.addTo(map);
+  function loadTile(county, tx, ty){
+    var cacheKey = county + ':' + tx + '_' + ty;
+    if (loadedTileKeys[cacheKey]) return;
+    loadedTileKeys[cacheKey] = true;
+    var url = 'tiles/' + county + '/' + tx + '_' + ty + '.json';
+    bumpLoading(1);
+    fetch(url)
+      .then(function(res){
+        bumpLoading(-1);
+        if (!res.ok) return null; // 404 = no parcels for this county in this tile, expected
+        return res.json();
+      })
+      .then(function(fc){
+        if (!fc || !fc.features) return;
+        var layer = L.geoJSON(fc, {
+          style: function(feature){ return styleParcel(feature.properties || {}); },
+          onEachFeature: function(feature, lyr){
+            lyr.bindPopup(buildPopup(feature.properties || {}));
+          }
+        });
+        tileLayers[cacheKey] = layer;
+        if (parcelsOn) layer.addTo(parcelGroup);
+      })
+      .catch(function(){ bumpLoading(-1); });
+  }
+
+  function refreshTiles(){
+    if (map.getZoom() < CONFIG.MIN_PARCEL_ZOOM) return;
+    var keys = tileKeysForBounds(map.getBounds());
+    if (keys.length > 60){
+      // Zoomed too far out for tile-by-tile loading to be reasonable — wait for the user to zoom in.
+      return;
+    }
+    keys.forEach(function(k){
+      COUNTIES.forEach(function(county){ loadTile(county, k[0], k[1]); });
+    });
+  }
+
+  parcelGroup.addTo(map);
+  map.on('moveend zoomend', refreshTiles);
+  refreshTiles();
+  setStatus(
+    "<b>Heads up:</b> parcel lines here come from the 2025 Florida DOR statewide tax roll (Collier &amp; Lee " +
+    "counties only) and are for general reference only &mdash; not a survey. Boundaries can be off by several " +
+    "feet. Zoom in if you don't see outlines yet &mdash; they only load once you're close enough, and only for " +
+    "these two counties."
+  );
 
   document.getElementById("btn-parcels").onclick = function(){
     parcelsOn = !parcelsOn;
     this.classList.toggle("active", parcelsOn);
     this.textContent = "Parcels: " + (parcelsOn ? "on" : "off");
-    if (parcelsOn){ parcelLayer.addTo(map); map.fire("moveend"); }
-    else { map.removeLayer(parcelLayer); }
+    if (parcelsOn){
+      Object.keys(tileLayers).forEach(function(k){ tileLayers[k].addTo(parcelGroup); });
+    } else {
+      parcelGroup.clearLayers();
+    }
   };
 
   // ---------------- Basemap toggle ----------------
