@@ -1102,7 +1102,7 @@ body.narrow #topbar .brand{ font-size:13px; }
 </div>
 
 <div id="status">
-  <b>Heads up:</b> Florida parcels from the 2025 DOR tax roll (Collier &amp; Lee); habitat from FWC/FNAI Cooperative Land Cover v4.0; fire from NASA FIRMS. Montana districts and public land from MT FWP and the Montana State Library. Reference only &mdash; not a survey.
+  <b>Heads up:</b> Florida parcels from the 2025 DOR tax roll; habitat from FWC/FNAI Cooperative Land Cover v4.0; fire from NASA FIRMS; panther tracks from FWC telemetry. Montana districts from MT FWP; parcels and public land from the Montana State Library (Sept 2026). Reference only &mdash; not a survey.
 </div>
 <script>
 /* @preserve
@@ -1209,6 +1209,43 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
     loadingEl.classList.toggle("show", loadCount > 0);
   }
 
+  function isMtParcel(p){ return p && p.HD !== undefined; }
+
+  function mtParcelIsPublic(p){
+    var n = (p.OwnerName || '').toUpperCase();
+    return ['USA','UNITED STATES','FOREST SERVICE','STATE OF MONTANA','BUREAU OF',
+            'MONTANA DEPT','MONTANA STATE','COUNTY OF','DNRC','FISH WILDLIFE',
+            'SCHOOL DIST','CITY OF','TOWN OF'].some(function(k){ return n.indexOf(k) !== -1; });
+  }
+
+  function buildMtParcelPopup(p){
+    var pub = mtParcelIsPublic(p);
+    var html = '<div class="parcel-pop">';
+    html += '<span class="tag ' + (pub ? 'public' : 'private') + '">' +
+            (pub ? "Public / gov't" : 'Private') + '</span>';
+    html += '<h4>' + escapeHtml(p.OwnerName || 'Owner not listed') + '</h4>';
+    html += '<table>';
+    if (p.AddressLin) html += rowHtml('Site address', p.AddressLin);
+    var mail = [p.OwnerAddre, p.OwnerCity, p.OwnerState].filter(Boolean).join(', ');
+    if (mail)         html += rowHtml('Mailing', mail);
+    if (p.PropType)   html += rowHtml('Type', p.PropType);
+    if (p.TotalAcres) html += rowHtml('Acres', Number(p.TotalAcres).toLocaleString());
+    if (p.TotalValue) html += rowHtml('Assessed value', '$' + Number(p.TotalValue).toLocaleString());
+    var use = [];
+    if (p.ForestAcre) use.push(Math.round(p.ForestAcre) + ' forest');
+    if (p.GrazingAcr) use.push(Math.round(p.GrazingAcr) + ' grazing');
+    if (p.IrrigatedA) use.push(Math.round(p.IrrigatedA) + ' irrigated');
+    if (use.length)   html += rowHtml('Land use', use.join(' &middot; ') + ' ac');
+    if (p.Township && p.Range && p.Section)
+      html += rowHtml('PLSS', 'T' + p.Township + ' R' + p.Range + ' S' + p.Section);
+    if (p.HD)         html += rowHtml('Hunting district', p.HD);
+    html += '</table>';
+    if (p.PARCELID) html += '<div class="cat" style="margin-top:5px;font-size:10.5px;color:#77715c">' +
+                            escapeHtml(p.PARCELID) + '</div>';
+    html += '</div>';
+    return html;
+  }
+
   function styleParcel(feature){
     var pub = isPublic(feature.properties || {});
     return {
@@ -1261,7 +1298,7 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
   }
 
   var TILE_SIZE = 0.02; // must match the tiling scripts
-  var COUNTIES = ['collier', 'lee'];
+  var COUNTIES = ['collier', 'lee', 'mt'];
   var HAB_REGIONS = ['collier_lee', 'st_vincent'];
   var MT_HAB_DIR = 'lctiles/mt';
   var legendColors = {};
@@ -1477,9 +1514,18 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
       .then(function(fc){
         if (!fc || !fc.features) return;
         var layer = L.geoJSON(fc, {
-          style: function(feature){ return styleParcel(feature.properties || {}); },
+          style: function(feature){
+            var p = feature.properties || {};
+            if (isMtParcel(p)){
+              var pub = mtParcelIsPublic(p);
+              return { color: pub ? '#2f6b40' : '#a85f2c', weight: 1.4, opacity: 0.9,
+                       fillColor: pub ? '#7fb08a' : '#e8a06a', fillOpacity: 0.16 };
+            }
+            return styleParcel(p);
+          },
           onEachFeature: function(feature, lyr){
-            lyr.bindPopup(buildPopup(feature.properties || {}));
+            var p = feature.properties || {};
+            lyr.bindPopup(isMtParcel(p) ? buildMtParcelPopup(p) : buildPopup(p));
           }
         });
         tileLayers[cacheKey] = layer;
