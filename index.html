@@ -1063,9 +1063,7 @@ body.narrow #topbar .brand{ font-size:13px; }
     <div class="hr"></div>
     <h3>Panther tracks</h3>
     <select id="panther-cat"></select>
-    <div class="legend-row" style="margin-top:6px"><span class="swatch" style="background:#534AB7;border-color:#3C3489;"></span>Adult</div>
-    <div class="legend-row"><span class="swatch" style="background:#b07aa1;border-color:#7d4f70;"></span>Kitten</div>
-    <div class="legend-note">FWC aerial telemetry, Jan 2024 &ndash; Feb 2026. Fixes average 4 days apart, taken at morning rest sites &mdash; dashed lines show sequence, <b>not</b> the route walked. Pick one animal to trace its path.</div>
+    <div class="legend-note" style="margin-top:6px">Each animal has its own colour. Solid-dash = adult, fine-dash = kitten. Enlarged dot = first fix, red = most recent.<br><br>FWC aerial telemetry, Jan 2024 &ndash; Feb 2026. Fixes average 4 days apart, taken at morning rest sites &mdash; lines show <b>sequence, not the route walked</b>. Pick one animal to isolate its track.</div>
   </div>
 
   <div id="fire-legend-wrap" style="display:none">
@@ -2019,6 +2017,20 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
 
   function isKitten(cat){ return cat.charAt(0) === 'K'; }
 
+  // Distinct colour per animal so overlapping tracks stay readable
+  var PANTHER_PALETTE = ['#534AB7','#1E7B6B','#B5623A','#2F6F9E','#8A5CA8','#4E8F3D',
+                         '#C0392B','#0F7A8A','#9A7B1F','#6B4FA0','#3D8F6E','#A8562C',
+                         '#43628F','#7E5AA6','#2E8B57','#B0483F','#1F6F8B','#8F6B2F',
+                         '#5A4FA8','#3F7F5F'];
+  var pantherColor = {};
+  function initPantherColors(){
+    if (typeof PANTHER === 'undefined') return;
+    Object.keys(PANTHER).sort().forEach(function(c, i){
+      pantherColor[c] = PANTHER_PALETTE[i % PANTHER_PALETTE.length];
+    });
+  }
+  initPantherColors();
+
   function drawPanther(){
     pantherGroup.clearLayers();
     if (!pantherOn || typeof PANTHER === 'undefined') return;
@@ -2028,27 +2040,32 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
       var pts = PANTHER[cat];
       if (!pts || !pts.length) return;
       var kit = isKitten(cat);
-      var line = kit ? '#b07aa1' : '#534AB7';
+      var line = pantherColor[cat] || '#534AB7';
 
-      // Traced path — dashed, because consecutive fixes are ~4 days apart
-      if (pts.length > 1 && pantherCat !== 'ALL'){
+      // Traced path — dashed, because consecutive fixes average ~4 days apart
+      if (pts.length > 1){
         L.polyline(pts.map(function(p){ return [p[1], p[0]]; }), {
           pane: 'pantherPane',
-          color: line, weight: 2, opacity: 0.75, dashArray: '7,5'
+          color: line,
+          weight: pantherCat === 'ALL' ? 1.6 : 2.4,
+          opacity: pantherCat === 'ALL' ? 0.6 : 0.85,
+          dashArray: kit ? '3,4' : '7,5'
         }).addTo(pantherGroup);
       }
 
       pts.forEach(function(p, i){
         var first = (i === 0), last = (i === pts.length - 1);
-        var r = (pantherCat !== 'ALL' && (first || last)) ? 6 : 4;
-        var fill = last && pantherCat !== 'ALL' ? '#E24B4A' : line;
+        var r = (first || last) ? (pantherCat === 'ALL' ? 5 : 6.5) : (pantherCat === 'ALL' ? 3 : 4.5);
+        var fill = last && pts.length > 1 ? '#E24B4A' : line;
         L.circleMarker([p[1], p[0]], {
           pane: 'pantherPane',
-          radius: r, weight: 1.5, color: '#fff', fillColor: fill, fillOpacity: 0.9
+          radius: r, weight: 1.4, color: '#fff', fillColor: fill, fillOpacity: 0.92
         }).bindPopup(
-          '<div class="hab-pop"><h4>' + escapeHtml(cat) + (kit ? ' (kitten)' : '') + '</h4>' +
+          '<div class="hab-pop"><h4><span class="chip" style="background:' + line + '"></span>' +
+          escapeHtml(cat) + (kit ? ' (kitten)' : '') + '</h4>' +
           '<div class="cat">' + pantherDate(p[2]) + '</div>' +
-          '<div class="cat">Fix ' + (i+1) + ' of ' + pts.length + '</div>' +
+          '<div class="cat">Fix ' + (i+1) + ' of ' + pts.length +
+          (first ? ' &middot; first' : last && pts.length > 1 ? ' &middot; most recent' : '') + '</div>' +
           '<div class="fire-note" style="margin-top:5px">Morning aerial telemetry. ' +
           'Fixes average 4 days apart &mdash; lines show sequence, not route.</div></div>'
         ).addTo(pantherGroup);
