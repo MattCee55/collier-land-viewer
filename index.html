@@ -2154,6 +2154,33 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
     drawPanther();
   };
 
+  // ---------------- Show only the controls relevant to where you're looking ----------------
+  // Panther, dryness and the FIRMS fire points are Florida-only datasets.
+  function inMontana(){ return map.getCenter().lng < -100; }
+
+  function updateRegionalControls(){
+    var mt = inMontana();
+    [['btn-panther', 'panther-wrap'],
+     ['btn-dryness', 'dry-legend-wrap'],
+     ['btn-fire',    'fire-legend-wrap']].forEach(function(pair){
+      var btn = document.getElementById(pair[0]);
+      if (btn) btn.style.display = mt ? 'none' : '';
+    });
+    if (mt){
+      // collapse any Florida-only layer that was left on
+      if (pantherOn) document.getElementById('btn-panther').click();
+      if (drynessOn) document.getElementById('btn-dryness').click();
+      if (fireOn)    document.getElementById('btn-fire').click();
+      ['panther-wrap','dry-legend-wrap','fire-legend-wrap'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+    }
+  }
+
+  map.on('moveend', updateRegionalControls);
+  updateRegionalControls();
+
   // ---------------- Mobile: retractable panel ----------------
   var panelEl = document.getElementById("panel");
   var panelToggle = document.getElementById("panel-toggle");
