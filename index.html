@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SW Florida Land Viewer</title>
+<title>2026 Hunting Land Viewer</title>
 <style>
 /* required styles */
 
@@ -978,13 +978,21 @@ body.narrow #topbar .brand{ font-size:13px; }
 .rank-row .dot.cool{ background:#888780; }
 .rank-name{ flex:1; line-height:1.25; }
 .rank-date{ color:#77715c; font-size:10px; white-space:nowrap; }
+
+/* ---- Region dropdown ---- */
+#region-select{
+  width:100%; padding:7px 8px; font-size:12.5px;
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  border:1px solid var(--line); border-radius:7px;
+  background:#fff; color:var(--ink); cursor:pointer;
+}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>SW Florida Land Viewer</b><span>Parcels &amp; ownership &middot; habitat types &middot; 2025 data</span></div>
+  <div class="brand"><b>2026 Hunting Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire</span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -992,12 +1000,18 @@ body.narrow #topbar .brand{ font-size:13px; }
 <button id="panel-toggle" aria-label="Toggle controls">☰</button>
 
 <div id="panel">
-  <h3>Region</h3>
-  <div class="seg regions">
-    <button id="reg-collier" class="active">Collier</button>
-    <button id="reg-lee">Lee</button>
-    <button id="reg-stvincent">St. Vincent</button>
-  </div>
+  <h3>Location</h3>
+  <select id="region-select">
+    <optgroup label="Florida">
+      <option value="collier" selected>Collier County</option>
+      <option value="lee">Lee County</option>
+      <option value="stvincent">St. Vincent Island</option>
+    </optgroup>
+    <optgroup label="Montana">
+      <option value="mt270">Unit 270</option>
+      <option value="mt321">Unit 321</option>
+    </optgroup>
+  </select>
 
   <div class="hr"></div>
 
@@ -1051,7 +1065,7 @@ body.narrow #topbar .brand{ font-size:13px; }
 </div>
 
 <div id="status">
-  <b>Heads up:</b> parcel lines come from the 2025 Florida DOR tax roll (Collier &amp; Lee only); habitat comes from the FWC/FNAI Cooperative Land Cover v4.0. Reference only &mdash; not a survey.
+  <b>Heads up:</b> Florida parcels from the 2025 DOR tax roll (Collier &amp; Lee); habitat from FWC/FNAI Cooperative Land Cover v4.0; fire from NASA FIRMS. Montana districts and public land from MT FWP and the Montana State Library. Reference only &mdash; not a survey.
 </div>
 <script>
 /* @preserve
@@ -1084,7 +1098,9 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
   var REGIONS_VIEW = {
     collier:   { center: [26.155, -81.55],  zoom: 15 },
     lee:       { center: [26.605, -81.87],  zoom: 14 },
-    stvincent: { center: [29.661, -85.144], zoom: 14 }
+    stvincent: { center: [29.661, -85.144], zoom: 14 },
+    mt270:     { center: [45.9631, -113.9111], zoom: 10 },
+    mt321:     { center: [45.5641, -113.6165], zoom: 10 }
   };
 
   // Field names vary by source. We scan for the first match in
@@ -1440,19 +1456,28 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
   };
 
   // ---------------- Region jump ----------------
-  function wireRegion(btnId, key){
-    var btn = document.getElementById(btnId);
-    btn.addEventListener("click", function(){
-      var r = REGIONS_VIEW[key];
-      ['reg-collier','reg-lee','reg-stvincent'].forEach(function(id){
-        document.getElementById(id).classList.toggle("active", id === btnId);
-      });
-      map.setView(r.center, r.zoom);
-    });
+  // Montana entries fit to the actual hunting-district polygon once that layer
+  // is loaded; the coords below are only a fallback so the control still works
+  // before the Montana data is in place.
+  var regionSelect = document.getElementById('region-select');
+  var mtDistrictBounds = {}; // "270" -> L.LatLngBounds, filled by the MT district layer
+
+  function goToRegion(key){
+    if (key === 'mt270' || key === 'mt321'){
+      var hd = key.slice(2);
+      if (mtDistrictBounds[hd]){
+        map.fitBounds(mtDistrictBounds[hd], { padding: [20,20] });
+        return;
+      }
+    }
+    var r = REGIONS_VIEW[key];
+    if (r) map.setView(r.center, r.zoom);
   }
-  wireRegion('reg-collier', 'collier');
-  wireRegion('reg-lee', 'lee');
-  wireRegion('reg-stvincent', 'stvincent');
+
+  regionSelect.addEventListener('change', function(){
+    goToRegion(this.value);
+    if (isSmallScreen()) setPanelOpen(false);
+  });
 
   // ---------------- Basemap toggle ----------------
   var segImagery = document.getElementById("seg-imagery");
@@ -1715,6 +1740,101 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
     });
   }
 
+  // ---------------- Montana: hunting districts + USFS managed land ----------------
+  map.createPane('districtPane');
+  map.getPane('districtPane').style.zIndex = 405; // above parcels, outline only
+
+  var districtGroup = L.layerGroup().addTo(map);
+
+  ['270','321'].forEach(function(hd){
+    fetch('mt/hd' + hd + '.json')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(fc){
+        if (!fc || !fc.features) return;
+        var lyr = L.geoJSON(fc, {
+          pane: 'districtPane',
+          style: { color: '#c0392b', weight: 3, opacity: 0.95, fill: false, dashArray: '8,5' },
+          onEachFeature: function(feature, l){
+            var p = feature.properties || {};
+            var html = '<div class="ml-pop">';
+            html += '<span class="tag" style="background:#c0392b">Hunting district</span>';
+            html += '<h4>Montana HD ' + escapeHtml(p.DISTRICT) + '</h4>';
+            html += '<table>';
+            html += '<tr><td class="k">FWP region</td><td class="v">' + escapeHtml(p.REG) + '</td></tr>';
+            html += '<tr><td class="k">Area</td><td class="v">' + p.AREA_MI.toLocaleString() + ' sq mi</td></tr>';
+            html += '</table>';
+            if (p.DEERWEB) html += '<div style="margin-top:6px"><a href="' + escapeHtml(p.DEERWEB) + '" target="_blank" rel="noopener">Deer regulations &rarr;</a></div>';
+            if (p.ELKWEB)  html += '<div><a href="' + escapeHtml(p.ELKWEB) + '" target="_blank" rel="noopener">Elk regulations &rarr;</a></div>';
+            if (p.MAPLINK) html += '<div><a href="' + escapeHtml(p.MAPLINK) + '" target="_blank" rel="noopener">FWP district map (PDF) &rarr;</a></div>';
+            html += '</div>';
+            l.bindPopup(html);
+          }
+        });
+        lyr.addTo(districtGroup);
+        mtDistrictBounds[hd] = lyr.getBounds();
+      })
+      .catch(function(){});
+  });
+
+  // Montana managed land rides in the same layer/toggle as the Florida one
+  function mtInstCategory(instType){
+    var t = (instType || '').toLowerCase();
+    if (t.indexOf('federal') === 0) return 'Federal';
+    if (t.indexOf('state') === 0) return 'State';
+    if (t.indexOf('local') === 0 || t.indexOf('county') === 0) return 'Local';
+    if (t.indexOf('private') === 0) return 'Private';
+    return 'Mixed';
+  }
+
+  function styleMtManaged(feature){
+    var cat = mtInstCategory((feature.properties || {}).INSTTYPE);
+    var c = OWNER_CATS[cat] || OWNER_CATS.Mixed;
+    return { color: c.line, weight: 1.8, opacity: 0.9, fillColor: c.fill, fillOpacity: 0.15 };
+  }
+
+  function buildMtManagedPopup(p){
+    var cat = mtInstCategory(p.INSTTYPE);
+    var c = OWNER_CATS[cat] || OWNER_CATS.Mixed;
+    var html = '<div class="ml-pop">';
+    html += '<span class="tag" style="background:' + c.line + '">' + cat + '</span>';
+    html += '<h4>' + escapeHtml(p.MANAME || 'Managed area') + '</h4>';
+    html += '<table>';
+    if (p.UNITTYPE) html += '<tr><td class="k">Type</td><td class="v">' + escapeHtml(p.UNITTYPE) + '</td></tr>';
+    if (p.INST)     html += '<tr><td class="k">Agency</td><td class="v">' + escapeHtml(p.INST) + '</td></tr>';
+    if (p.IN_ACRES) html += '<tr><td class="k">Acres in unit</td><td class="v">' + p.IN_ACRES.toLocaleString() + '</td></tr>';
+    if (p.ACRES)    html += '<tr><td class="k">Total acres</td><td class="v">' + Math.round(p.ACRES).toLocaleString() + '</td></tr>';
+    html += '</table>';
+    if (p.URL){
+      var u = String(p.URL);
+      if (!/^https?:/i.test(u)) u = 'http://' + u;
+      html += '<div style="margin-top:6px"><a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">Agency page &rarr;</a></div>';
+    }
+    var ut = (p.UNITTYPE || '').toLowerCase();
+    if (ut.indexOf('wilderness') !== -1){
+      html += '<div class="warn" style="background:#e4eee6;color:#2a5c3a">Designated wilderness &mdash; no motorized or mechanized access. Foot and horseback only.</div>';
+    } else if (ut.indexOf('roadless') !== -1){
+      html += '<div class="warn" style="background:#e4eee6;color:#2a5c3a">Inventoried roadless area &mdash; limited road access, typically walk-in hunting.</div>';
+    } else {
+      html += '<div class="warn" style="background:#e4eee6;color:#2a5c3a">Public land. Confirm seasons and any access restrictions with the managing agency.</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  fetch('mt/managed.json')
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(fc){
+      if (!fc || !fc.features) return;
+      L.geoJSON(fc, {
+        pane: 'managedPane',
+        style: styleMtManaged,
+        onEachFeature: function(feature, l){
+          l.bindPopup(buildMtManagedPopup(feature.properties || {}));
+        }
+      }).addTo(managedGroup);
+    })
+    .catch(function(){});
+
   // ---------------- Mobile: retractable panel ----------------
   var panelEl = document.getElementById("panel");
   var panelToggle = document.getElementById("panel-toggle");
@@ -1735,13 +1855,6 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
 
   window.addEventListener("resize", function(){
     if (!isSmallScreen()) setPanelOpen(true);
-  });
-
-  // Tapping a region button on a phone should reveal the map again
-  ['reg-collier','reg-lee','reg-stvincent'].forEach(function(id){
-    document.getElementById(id).addEventListener("click", function(){
-      if (isSmallScreen()) setPanelOpen(false);
-    });
   });
 
   // ---------------- Locate ----------------
