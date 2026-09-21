@@ -986,6 +986,24 @@ body.narrow #topbar .brand{ font-size:13px; }
   border:1px solid var(--line); border-radius:7px;
   background:#fff; color:var(--ink); cursor:pointer;
 }
+
+/* ---- Dryness ---- */
+#dry-mode{
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  font-size:9.5px; font-weight:400; color:#8a836c; letter-spacing:.02em;
+}
+.dry-chip{
+  display:inline-block; margin-top:6px; padding:3px 8px;
+  border-radius:999px; color:#fff; font-size:10.5px; font-weight:600;
+}
+
+/* ---- Panther picker ---- */
+#panther-cat{
+  width:100%; padding:6px 8px; font-size:12px;
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  border:1px solid var(--line); border-radius:7px;
+  background:#fff; color:var(--ink); cursor:pointer;
+}
 </style>
 </head>
 <body>
@@ -1026,8 +1044,29 @@ body.narrow #topbar .brand{ font-size:13px; }
   <h3>Layers</h3>
   <button id="btn-managed" class="btn active">Managed lands: on</button>
   <button id="btn-fire" class="btn">Fire points: off</button>
+  <button id="btn-panther" class="btn">Panther: off</button>
   <button id="btn-habitat" class="btn active">Habitat: on</button>
+  <button id="btn-dryness" class="btn">Dryness: off</button>
   <button id="btn-parcels" class="btn active">Parcels: on</button>
+
+  <div id="dry-legend-wrap" style="display:none">
+    <div class="hr"></div>
+    <h3>Dryness <span id="dry-mode">deer proxy</span></h3>
+    <div class="legend-row"><span class="swatch" style="background:#c9a227;border-color:#8a6d10;"></span>Dry &middot; 0&ndash;1 mo</div>
+    <div class="legend-row"><span class="swatch" style="background:#9fb04a;border-color:#6a7828;"></span>Slightly wet &middot; 1&ndash;2 mo</div>
+    <div class="legend-row"><span class="swatch" style="background:#4e9c8f;border-color:#2a6359;"></span>Moderately wet &middot; 2&ndash;6 mo</div>
+    <div class="legend-row"><span class="swatch" style="background:#2f6f9e;border-color:#1b4666;"></span>Wet &middot; 6&ndash;10 mo</div>
+    <div class="legend-note">Inferred from vegetation, not measured water. The South Florida Deer Study found roughly 3&times; higher deer density on the dry end of this gradient. Florida only.</div>
+  </div>
+
+  <div id="panther-wrap" style="display:none">
+    <div class="hr"></div>
+    <h3>Panther tracks</h3>
+    <select id="panther-cat"></select>
+    <div class="legend-row" style="margin-top:6px"><span class="swatch" style="background:#534AB7;border-color:#3C3489;"></span>Adult</div>
+    <div class="legend-row"><span class="swatch" style="background:#b07aa1;border-color:#7d4f70;"></span>Kitten</div>
+    <div class="legend-note">FWC aerial telemetry, Jan 2024 &ndash; Feb 2026. Fixes average 4 days apart, taken at morning rest sites &mdash; dashed lines show sequence, <b>not</b> the route walked. Pick one animal to trace its path.</div>
+  </div>
 
   <div id="fire-legend-wrap" style="display:none">
     <div class="hr"></div>
@@ -1077,6 +1116,8 @@ body.narrow #topbar .brand{ font-size:13px; }
 <script>
 var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, and Outcrop Communities":"#9a944a","Basin Swamp":"#4a9a90","Baygall":"#4a9a8a","Coastal Scrub":"#889e47","Coastal Strand":"#ac8f39","Coastal Uplands":"#ac8f39","Communication":"#786d6d","Cropland/Pasture":"#9a944a","Cultural - Terrestrial":"#837261","Cultural-Estuarine":"#429aa2","Cultural-Lacustrine":"#3969ac","Cultural-Palustrine":"#837261","Cultural-Riverine":"#3969ac","Cypress":"#477a9e","Cypress/Tupelo (including mixed Cypress/Tupelo)":"#477a9e","Dome Swamp":"#4a9a90","Dry Prairie":"#9aa242","Estuarine":"#429aa2","Exotic Plants":"#955095","Extractive":"#727272","Floodplain Marsh":"#4489a0","Floodplain Swamp":"#4a9a90","Freshwater Forested Wetlands":"#4a9a90","Freshwater Non-Forested Wetlands":"#4a9a90","High Intensity Urban":"#727272","High Pine and Scrub":"#6ba044","Hydric Hammock":"#4a9a90","Improved Pasture":"#9a944a","Isolated Freshwater Marsh":"#4489a0","Isolated Freshwater Swamp":"#4a9a90","Lacustrine":"#3969ac","Low Intensity Urban":"#727272","Mangrove Swamp":"#3fa67b","Marine":"#3f58a6","Maritime Hammock":"#4a9a57","Marshes":"#4489a0","Mesic Flatwoods":"#559e47","Mesic Hammock":"#4a9a57","Mixed Hardwood-Coniferous":"#4a9a57","Natural Lakes and Ponds":"#3969ac","Natural Rivers and Streams":"#3969ac","Non-vegetated Wetland":"#4c9898","Orchards/Groves":"#9a944a","Other Agriculture":"#9a944a","Other Coniferous Wetlands":"#4c9898","Other Hardwood Wetlands":"#4a9a57","Palmetto Prairie":"#9aa242","Prairies and Bogs":"#4489a0","Riverine":"#3969ac","Rockland Hammock":"#4a9a57","Rural":"#9a944a","Salt Marsh":"#429aa2","Sand Beach (Dry)":"#ac8f39","Sand Pine Scrub":"#6ba044","Scrub":"#889e47","Scrub Mangrove":"#3fa67b","Scrubby Flatwoods":"#559e47","Shrub and Brushland":"#789550","Strand Swamp":"#4a9a90","Sugarcane":"#9a984a","Tidal Flat":"#429aa2","Transportation":"#727272","Tree Plantations":"#759550","Unconsolidated substrate":"#4c9898","Upland Hardwood Forest":"#4a9a57","Utilities":"#727272","Vineyard and Nurseries":"#9a984a","Wet Flatwoods":"#4a9a90","Xeric Hammock":"#4a9a57"},"site":{"Bare Soil/Clear Cut":"#807464","Bare Soil":"#9a914a","Basin Swamp":"#4a9a8d","Bay Swamp":"#316757","Baygall":"#51a894","South Florida Bayhead":"#90c9c0","Coastal Scrub":"#8b9e47","Coastal Strand":"#ac8b39","Beach Dune":"#725526","Coastal Berm":"#a38036","Coastal Grassland":"#c6a954","Shell Mound":"#d6c784","Communication":"#786d6d","Fallow Cropland":"#675931","Field Crops":"#877b41","Irrigated Row Crops":"#a89e51","Other Open Lands - Rural":"#bab670","Row Crops":"#c9c990","Cultural - Terrestrial":"#574941","Highway Rights of Way":"#7d6a5c","Mowed Grass":"#9e8d7c","Vegetative Berm":"#b9afa1","Cultural - Estuarine":"#2c6b6c","Estuarine Ditch/Channel":"#8bc9cf","Aquacultural Ponds":"#265a72","Artificial Impoundment/Reservoir":"#2d6487","Artificial/Farm Pond":"#346d9c","Cultural - Lacustrine":"#3b74b1","Industrial Cooling Pond":"#4679c1","Quarry Pond":"#5b81c8","Sewage Treatment Pond":"#6f8acf","Stormwater Treatment Areas":"#8496d6","Clearcut Wetland":"#574941","Cultural - Palustrine":"#7d6a5c","Grazed Wetlands":"#9e8d7c","Impounded Marsh":"#b9afa1","Canal":"#264d72","Cultural - Riverine":"#3e76bb","Ditch/Artificial Intermittent Stream":"#84a3d6","Cypress":"#477c9e","Cypress/Tupelo (including mixed Cypress/Tupelo)":"#2f5569","Tupelo":"#8eb2cc","Dome Swamp":"#31675c","Gum Pond":"#90c9c2","Dry Prairie":"#9ea242","Estuarine":"#2c6c6b","Intertidal":"#48acb1","Oyster Bar":"#8bc7cf","Australian Pine":"#5b3563","Brazilian Pepper":"#7c4682","Exotic Plants":"#9f57a2","Exotic Wetland Hardwoods":"#b475b2","Melaleuca":"#c594c0","Extractive":"#4c4c4c","Oil & Gas Fields":"#5c5c5c","Reclaimed Lands":"#6c6c6c","Rock Quarries":"#7c7c7c","Sand and Gravel Pits":"#8d8d8d","Spoil Area":"#9d9d9d","Strip Mines":"#adadad","Floodplain Marsh":"#448ca0","Floodplain Swamp":"#4a9a8d","Cypress/Hardwood Swamps":"#316758","Cypress/Pine/Cabbage Palm":"#469283","Mixed Hardwood-Coniferous Swamps":"#65b4aa","Mixed Wetland Hardwoods":"#90c9c6","Floating/Emergent Aquatic Vegetation":"#316758","Freshwater Non-Forested Wetlands":"#469283","Slough":"#65b4aa","Submergent Aquatic Vegetation":"#90c9c6","Commercial and Services":"#4c4c4c","High Density Residential ":"#5f5f5f","High Intensity Urban":"#737373","Industrial":"#868686","Institutional":"#9a9a9a","Medium Density Residential":"#adadad","Upland Coniferous":"#6ea044","Cabbage Palm Hammock":"#316758","Coastal Hydric Hammock":"#469283","Hydric Hammock":"#65b4aa","Prairie Hydric Hammock":"#90c9c6","Improved Pasture":"#9a914a","Basin Marsh":"#2d616b","Depression Marsh":"#4a99ae","Isolated Freshwater Marsh":"#8cbbce","Isolated Freshwater Swamp":"#4a9a8d","Lacustrine":"#396dac","Ballfields":"#4c4c4c","Cemeteries":"#565656","Community rec. facilities":"#5f5f5f","Golf courses":"#696969","Grass":"#737373","Low Intensity Urban":"#7c7c7c","Parks and Zoos":"#868686","Residential, Low Density":"#909090","Urban Open Forested":"#9a9a9a","Urban Open Land":"#a3a3a3","Urban Open Pine":"#adadad","Mangrove Swamp":"#3fa677","Marine":"#3f5ca6","Maritime Hammock":"#4a9a55","Coastal Interdunal Swale":"#2d666b","Glades Marsh":"#3c808d","Marshes":"#4a99ae","Sawgrass":"#6aa7bf","Slough Marsh":"#8cb7ce","Mesic Flatwoods":"#589e47","Cabbage Palm":"#316731","Live Oak":"#418746","Mesic Hammock":"#51a85c","Pine - Mesic Oak":"#70ba7e","Prairie Mesic Hammock":"#90c9a0","Mixed Hardwood-Coniferous":"#316737","Successional Hardwood Forest":"#90c99a","Clastic Upland Lake":"#265272","Flatwoods/Prairie/Marsh Lake":"#326697","Littoral":"#3e76bb","Natural Lakes and Ponds":"#6088ca","River Floodplain Lake/Swamp Lake":"#849ed6","Blackwater Stream":"#264d72","Natural Rivers and Streams":"#3e76bb","Tidally-influenced Stream":"#84a3d6","Non-vegetated Wetland":"#4c9896","Citrus":"#675931","Fallow Orchards":"#877b41","Fruit Orchards":"#a89e51","Orchards/Groves":"#bab670","Pecan":"#c9c990","Feeding Operations":"#675d31","Other Agriculture":"#a89e51","Specialty Farms":"#c9c790","Other Coniferous Wetlands":"#4c9896","Other Hardwood Wetlands":"#316737","Titi Swamp":"#90c99a","Palmetto Prairie":"#9ea242","Marl Prairie":"#2d636b","Mixed Scrub-Shrub Wetland":"#418898","Shrub Bog":"#5fa3ba","Wet Prairie":"#8cb9ce","Riverine":"#396dac","Rockland Hammock":"#4a9a55","Oak - Cabbage Palm Forests":"#675831","Rural Open":"#81723e","Rural Open Forested":"#9b8f4a","Rural Open Pine":"#b0a95c","Rural Structures":"#bdbc76","Unimproved/Woodland Pasture":"#c7c990","Salt Marsh":"#429ea2","Sand Beach (Dry)":"#ac8b39","Sand Pine Scrub":"#6ea044","Scrub":"#8b9e47","Scrub Mangrove":"#3fa677","Scrubby Flatwoods":"#589e47","Shrub and Brushland":"#7a9550","Strand Swamp":"#4a9a8d","Irrigated Field Crops":"#9a954a","Tidal Flat":"#429ea2","Transportation":"#727272","Coniferous Plantations":"#516335","Wet Confierous Plantations":"#afc594","Unconsolidated Substrate":"#4c9896","Upland Hardwood Forest":"#4a9a55","Solar Farms":"#4c4c4c","Utilities":"#adadad","Ornamentals":"#675e31","Sod Farms":"#928b46","Tree Nurseries":"#b4b265","Vineyard and Nurseries":"#c8c990","Cabbage Palm Flatwoods":"#316758","Hydric Pine Flatwoods":"#469283","Hydric Pine Savanna":"#65b4aa","Wet Flatwoods":"#90c9c6","Xeric Hammock":"#4a9a55"}};
 var MT_LC_CLASSES = {"101":{"name":"Montane - Subalpine Limber Pine Woodland","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G101","color":"#8dbc7f"},"141":{"name":"Great Plains Mesic Mixedgrass Prairie","l1":"Grassland","l2":"Lowland - Prairie Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGL0G141","color":"#daed77"},"145":{"name":"Great Plains Mesic Forest and Woodland","l1":"Forest and Woodland","l2":"Deciduous Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFD0G145","color":"#86ae5d"},"147":{"name":"Great Plains Floodplain Forest","l1":"Wetland and Riparian","l2":"Riparian and Wetland Forest","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWF0G147","color":"#548cdd"},"209":{"name":"Foothills Limber Pine - Juniper Woodland","l1":"Forest and Woodland","l2":"Low Elevation - Xeric Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFL0G209","color":"#68925c"},"210":{"name":"Interior PNW Douglas-fir Forest and Woodland","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G210","color":"#4c702f"},"211":{"name":"Montane Mesic Coniferous (Grand Fir - Douglas-fir - Western Larch) Forest","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G211","color":"#4c6400"},"213":{"name":"Rocky Mountain Ponderosa Pine Forest and Woodland","l1":"Forest and Woodland","l2":"Low Elevation - Xeric Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFL0G213","color":"#9dc45f"},"215":{"name":"Rocky Mountain Douglas-fir Forest","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G215","color":"#467338"},"216":{"name":"Great Plains Ponderosa Pine Forest and Woodland","l1":"Forest and Woodland","l2":"Low Elevation - Xeric Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFL0G216","color":"#568630"},"217":{"name":"Cedar - Hemlock Forest","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G217","color":"#3d5904"},"218":{"name":"Mesic Spruce-fir Forest","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G218","color":"#809f44"},"219":{"name":"Dry Spruce-fir Forest","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G219","color":"#658c2a"},"220":{"name":"Lodgepole Pine Forest","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G220","color":"#65963c"},"222":{"name":"Rocky Mountain Aspen Forest and Woodland","l1":"Forest and Woodland","l2":"Deciduous Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFD0G222","color":"#56a955"},"223":{"name":"Whitebark Pine - Subalpine Larch Forest and Woodland","l1":"Forest and Woodland","l2":"Montane - Subalpine Forest and Woodland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVFM0G223","color":"#5c7a5c"},"249":{"name":"Mountain Mahogany Woodland and Shrubland","l1":"Shrubland","l2":"Foothills - Montane Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSF0G249","color":"#d6dd0b"},"267":{"name":"Montane - Subalpine Dry Grassland","l1":"Grassland","l2":"Montane - Subalpine Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGM0G267","color":"#b6d575"},"271":{"name":"Montane - Subalpine Mesic Grassland and Meadow","l1":"Grassland","l2":"Montane - Subalpine Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGM0G271","color":"#cedf75"},"272":{"name":"Lowland - Montane Shrubland","l1":"Shrubland","l2":"Foothills - Montane Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSF0G272","color":"#dfe8a2"},"273":{"name":"Rocky Mountain Low Elevation - Dry Grassland","l1":"Grassland","l2":"Lowland - Prairie Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGL0G273","color":"#cee39d"},"300":{"name":"Intermountain Shadscale - Saltbush Shrubland","l1":"Shrubland","l2":"Arid - Saline Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSA0G300","color":"#e4c764"},"301":{"name":"Gardner's Saltbush - Bird's-foot Sage Dwarf-Shrubland","l1":"Shrubland","l2":"Arid - Saline Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSA0G301","color":"#f2d56a"},"302":{"name":"Basin and Wyoming Big (Threetip) Sagebrush Shrubland","l1":"Shrubland","l2":"Sagebrush Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSS0G302","color":"#fef1b4"},"304":{"name":"Mountain Big Sagebrush Shrubland","l1":"Shrubland","l2":"Sagebrush Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSS0G304","color":"#f1e5a3"},"305":{"name":"Montane - Subalpine Mesic Shrubland","l1":"Shrubland","l2":"Foothills - Montane Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSF0G305","color":"#c0d98f"},"308":{"name":"Low - Black Sagebrush Shrubland","l1":"Shrubland","l2":"Sagebrush Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSS0G308","color":"#fff682"},"310":{"name":"Intermountain Semi-Desert Steppe and Shrubland","l1":"Shrubland","l2":"Arid - Saline Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVSA0G310","color":"#b48e57"},"311":{"name":"Semi-Desert Grassland","l1":"Grassland","l2":"Lowland - Prairie Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGL0G311","color":"#f0c896"},"314":{"name":"Alpine Turf and Fellfield","l1":"Alpine","l2":"Alpine - Vegetated","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVAV0G314","color":"#e8deee"},"316":{"name":"Alpine Dwarf-Shrubland and Krummholz","l1":"Alpine","l2":"Alpine - Vegetated","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVAV0G316","color":"#ccb9d7"},"331":{"name":"Great Plains Dry Mixedgrass Prairie","l1":"Grassland","l2":"Lowland - Prairie Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGL0G331","color":"#d0ec9b"},"505":{"name":"Montane Forested Wetland","l1":"Wetland and Riparian","l2":"Riparian and Wetland Forest","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWF0G505","color":"#004c72"},"506":{"name":"Montane - Subalpine Riparian Forest","l1":"Wetland and Riparian","l2":"Riparian and Wetland Forest","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWF0G506","color":"#5078c8"},"515":{"name":"Rocky Mountain Acidic Fen","l1":"Wetland and Riparian","l2":"Peatland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWP0G515","color":"#5bc292"},"516":{"name":"Rocky Mountain Alkaline Fen","l1":"Wetland and Riparian","l2":"Peatland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWP0G516","color":"#7ed18b"},"520":{"name":"Alpine - Subalpine Herbaceous and Dwarf-Shrub Riparian and Wetland","l1":"Wetland and Riparian","l2":"Alpine Riparian and Wetland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWA0G520","color":"#aa7fcf"},"521":{"name":"Montane Wet Meadow and Marsh","l1":"Wetland and Riparian","l2":"Wet Meadow and Marsh","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWM0G521","color":"#a294c6"},"526":{"name":"Lowland - Montane Riparian Shrubland","l1":"Wetland and Riparian","l2":"Riparian Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWS0G526","color":"#6a8abd"},"527":{"name":"Montane - Subalpine Riparian and Seep Shrubland","l1":"Wetland and Riparian","l2":"Riparian Shrubland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWS0G527","color":"#0085a8"},"531":{"name":"Arid West Freshwater Marsh and Wet Meadow","l1":"Wetland and Riparian","l2":"Wet Meadow and Marsh","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWM0G531","color":"#5456b8"},"537":{"name":"Greasewood Shrubland","l1":"Wetland and Riparian","l2":"Alkaline - Saline Wetlands","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWK0G537","color":"#7fcfaa"},"538":{"name":"Intermountain Alkaline - Saline Grassland and Meadow","l1":"Wetland and Riparian","l2":"Alkaline - Saline Wetlands","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWK0G538","color":"#54a4a1"},"565":{"name":"Rocky Mountain Cliff, Scree and Rock Outcrops","l1":"Sparse and Barren","l2":"Sparse and Barren","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVBS0G565","color":"#af968c"},"566":{"name":"Great Plains Sparsely-Vegetated Badlands","l1":"Sparse and Barren","l2":"Sparse and Barren","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVBS0G566","color":"#97847d"},"567":{"name":"Great Plains Cliff and Rock Outcrops","l1":"Sparse and Barren","l2":"Sparse and Barren","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVBS0G567","color":"#c8b49c"},"570":{"name":"Intermountain Basin Cliff, Scree and Sparsely Vegetated Badlands","l1":"Sparse and Barren","l2":"Sparse and Barren","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVBS0G570","color":"#d6c296"},"571":{"name":"Alpine Bedrock and Scree","l1":"Alpine","l2":"Alpine - Sparse and Barren","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVAS0G571","color":"#d5bfc5"},"775":{"name":"Intermountain Sand Grassland","l1":"Grassland","l2":"Lowland - Prairie Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGL0G775","color":"#faeda4"},"796":{"name":"Lowland - Montane Riparian Deciduous Forest","l1":"Wetland and Riparian","l2":"Riparian and Wetland Forest","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWF0G796","color":"#32568c"},"889":{"name":"Great Plains Sand Prairie","l1":"Grassland","l2":"Lowland - Prairie Grassland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVGL0G889","color":"#d7d79e"},"984":{"name":"Great Plains Saline Marsh and Wet Meadow","l1":"Wetland and Riparian","l2":"Alkaline - Saline Wetlands","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWK0G984","color":"#5490a1"},"1213":{"name":"Great Plains Wet Meadow, Marsh and Shrub Swamp","l1":"Wetland and Riparian","l2":"Wet Meadow and Marsh","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWMG1213","color":"#8b7ecb"},"1216":{"name":"Great Plains Alkaline Fen","l1":"Wetland and Riparian","l2":"Peatland","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVWPG1216","color":"#91ddba"},"8101":{"name":"Developed - Low and Medium Intensity","l1":"Human Land Use","l2":"Developed","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHD00100","color":"#989898"},"8102":{"name":"Developed - High Intensity","l1":"Human Land Use","l2":"Developed","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHD00200","color":"#4b4b4b"},"8103":{"name":"Quarries-Strip Mines-Gravel Pits-Energy Development","l1":"Human Land Use","l2":"Mining and Resource Extraction","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHR00100","color":"#9d6d06"},"8104":{"name":"Developed - Vegetation","l1":"Human Land Use","l2":"Developed","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHD00300","color":"#d7e1c8"},"8201":{"name":"Interstate","l1":"Human Land Use","l2":"Transportation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHT00100","color":"#000000"},"8202":{"name":"Major Road","l1":"Human Land Use","l2":"Transportation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHT00200","color":"#000000"},"8203":{"name":"Other Road","l1":"Human Land Use","l2":"Transportation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHT00300","color":"#000000"},"8204":{"name":"Railroad","l1":"Human Land Use","l2":"Transportation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHT00400","color":"#5a0073"},"8301":{"name":"Irrigated Agriculture","l1":"Human Land Use","l2":"Agriculture","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHA00100","color":"#ffdc72"},"8302":{"name":"Cultivated Crops, Dryland","l1":"Human Land Use","l2":"Agriculture","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHA00200","color":"#ffda28"},"8303":{"name":"Pasture/Hay, Dryland","l1":"Human Land Use","l2":"Agriculture","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOHA00300","color":"#fff072"},"8401":{"name":"Introduced - Riparian and Wetland Forest and Shrubland","l1":"Recently Disturbed or Modified","l2":"Introduced Vegetation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODX00100","color":"#ff7e7e"},"8402":{"name":"Introduced - Riparian and Wetland Herbaceous Vegetation","l1":"Recently Disturbed or Modified","l2":"Introduced Vegetation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODX00200","color":"#d2565a"},"8403":{"name":"Introduced - Upland Herbaceous Vegetation","l1":"Recently Disturbed or Modified","l2":"Introduced Vegetation","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODX00300","color":"#c8ac27"},"8501":{"name":"Recent Insect/Disease Damage","l1":"Recently Disturbed or Modified","l2":"Insect-Killed Forest","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODI00100","color":"#ff5500"},"8502":{"name":"Recently Logged","l1":"Recently Disturbed or Modified","l2":"Harvested Forest","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODH00100","color":"#d198bc"},"8503":{"name":"Recently Burned Forest","l1":"Recently Disturbed or Modified","l2":"Recently Burned","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODB00100","color":"#340020"},"8504":{"name":"Recently Burned Shrubland","l1":"Recently Disturbed or Modified","l2":"Recently Burned","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODB00200","color":"#582d47"},"8505":{"name":"Recently Burned Sagebrush","l1":"Recently Disturbed or Modified","l2":"Recently Burned","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EODB00300","color":"#461633"},"8804":{"name":"Open Water","l1":"Open Water","l2":"Open Water","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EOWU00100","color":"#0047b0"},"8806":{"name":"Glacier and Ice Field","l1":"Alpine","l2":"Alpine - Sparse and Barren","url":"https://fieldguide.mt.gov/displayEG_Detail.aspx?EG=EVAS00100","color":"#fcf6ff"}};
+var DRYNESS = {"Aquacultural Ponds":4,"Artificial Impoundment/Reservoir":4,"Artificial/Farm Pond":4,"Basin Marsh":4,"Basin Swamp":4,"Bay Swamp":4,"Baygall":4,"Beach Dune":1,"Blackwater Stream":4,"Cabbage Palm":1,"Cabbage Palm Flatwoods":2,"Cabbage Palm Hammock":1,"Canal":4,"Clastic Upland Lake":4,"Clearcut Wetland":4,"Coastal Berm":1,"Coastal Grassland":1,"Coastal Hydric Hammock":2,"Coastal Interdunal Swale":3,"Coastal Scrub":1,"Coastal Strand":1,"Cultural - Estuarine":4,"Cultural - Lacustrine":4,"Cultural - Riverine":4,"Cypress":4,"Cypress/Hardwood Swamps":4,"Cypress/Pine/Cabbage Palm":4,"Cypress/Tupelo (including mixed Cypress/Tupelo)":4,"Depression Marsh":4,"Ditch/Artificial Intermittent Stream":4,"Dome Swamp":4,"Dry Prairie":1,"Estuarine":4,"Estuarine Ditch/Channel":4,"Exotic Wetland Hardwoods":4,"Flatwoods/Prairie/Marsh Lake":4,"Floating/Emergent Aquatic Vegetation":4,"Floodplain Marsh":4,"Floodplain Swamp":4,"Freshwater Non-Forested Wetlands":4,"Glades Marsh":4,"Grazed Wetlands":4,"Gum Pond":4,"Hydric Hammock":2,"Hydric Pine Flatwoods":2,"Hydric Pine Savanna":2,"Impounded Marsh":4,"Industrial Cooling Pond":4,"Intertidal":4,"Isolated Freshwater Marsh":4,"Isolated Freshwater Swamp":4,"Lacustrine":4,"Littoral":4,"Live Oak":1,"Mangrove Swamp":4,"Marine":4,"Maritime Hammock":1,"Marl Prairie":3,"Marshes":4,"Mesic Flatwoods":1,"Mesic Hammock":1,"Mixed Hardwood-Coniferous":1,"Mixed Hardwood-Coniferous Swamps":4,"Mixed Scrub-Shrub Wetland":3,"Mixed Wetland Hardwoods":4,"Natural Lakes and Ponds":4,"Natural Rivers and Streams":4,"Non-vegetated Wetland":4,"Oak - Cabbage Palm Forests":1,"Other Coniferous Wetlands":4,"Other Hardwood Wetlands":4,"Oyster Bar":4,"Palmetto Prairie":1,"Pine - Mesic Oak":1,"Prairie Hydric Hammock":2,"Prairie Mesic Hammock":1,"Quarry Pond":4,"River Floodplain Lake/Swamp Lake":4,"Riverine":4,"Rockland Hammock":1,"Salt Marsh":4,"Sand Beach (Dry)":1,"Sand Pine Scrub":1,"Sawgrass":4,"Scrub":1,"Scrub Mangrove":4,"Scrubby Flatwoods":1,"Sewage Treatment Pond":4,"Shell Mound":1,"Shrub Bog":3,"Shrub and Brushland":2,"Slough":4,"Slough Marsh":4,"South Florida Bayhead":4,"Strand Swamp":4,"Submergent Aquatic Vegetation":4,"Successional Hardwood Forest":1,"Tidal Flat":4,"Tidally-influenced Stream":4,"Titi Swamp":4,"Tupelo":4,"Unconsolidated Substrate":4,"Upland Coniferous":1,"Upland Hardwood Forest":1,"Vegetative Berm":3,"Wet Confierous Plantations":3,"Wet Flatwoods":3,"Wet Prairie":3,"Xeric Hammock":1};
+var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.143316,1704733200000],[-81.656338,26.110039,1704992400000],[-81.653198,26.101097,1705597200000],[-81.666619,26.097767,1705942800000],[-81.667818,26.111684,1706547600000],[-81.668543,26.084358,1707152400000],[-81.669182,26.073664,1707411600000],[-81.66709,26.085638,1707757200000]],"FP265":[[-81.544424,26.421393,1704387600000],[-81.546174,26.411824,1704733200000],[-81.546474,26.39892,1704992400000],[-81.55339,26.40274,1705597200000],[-81.505226,26.366459,1705942800000],[-81.589288,26.379771,1707152400000],[-81.574728,26.407216,1707411600000],[-81.609187,26.416084,1708016400000],[-81.579181,26.425482,1708621200000],[-81.56975,26.410324,1708966800000],[-81.573712,26.406497,1709226000000],[-81.575185,26.430608,1709571600000],[-81.615142,26.400763,1709830800000],[-81.619759,26.382911,1710172800000],[-81.631814,26.420672,1710432000000],[-81.641453,26.370301,1710777600000],[-81.61948,26.420879,1711036800000],[-81.559607,26.427727,1711382400000],[-81.570663,26.428703,1711641600000],[-81.542378,26.485642,1711987200000],[-81.50979,26.469979,1712246400000],[-81.462068,26.455171,1712592000000],[-81.447441,26.446902,1713283200000],[-81.448307,26.447875,1713456000000],[-81.349318,26.425072,1715875200000]],"FP266":[[-81.597264,26.460765,1707152400000],[-81.575334,26.430355,1709571600000],[-81.552496,26.475933,1713456000000],[-81.568869,26.459608,1718640000000],[-81.522653,26.492514,1724342400000],[-81.564471,26.436104,1724688000000],[-81.548396,26.442912,1725552000000],[-81.552291,26.456196,1725897600000],[-81.545438,26.479238,1726502400000],[-81.525068,26.493995,1726761600000],[-81.532822,26.488992,1727712000000],[-81.547298,26.473723,1727971200000],[-81.510201,26.474348,1728921600000],[-81.548203,26.448637,1729180800000],[-81.537993,26.483356,1729526400000],[-81.561169,26.437725,1729785600000],[-81.529456,26.490268,1730131200000],[-81.550978,26.473312,1730390400000],[-81.557913,26.452996,1730739600000],[-81.547261,26.474265,1730998800000],[-81.543134,26.479888,1731603600000]],"FP267":[[-81.608941,26.367428,1707152400000],[-81.521892,26.426045,1710172800000],[-81.551069,26.460689,1711641600000],[-81.524559,26.417088,1712592000000],[-81.573407,26.387429,1715616000000],[-81.513168,26.421671,1718899200000],[-81.53263,26.429951,1719849600000],[-81.504573,26.467533,1722528000000]],"FP268":[[-81.627167,26.401497,1708016400000]],"FP269":[[-81.318622,26.541837,1709226000000],[-81.274842,26.541495,1723132800000],[-81.264244,26.534102,1723737600000],[-81.275691,26.539606,1724083200000],[-81.272033,26.533861,1724342400000],[-81.276599,26.541473,1724947200000],[-81.277941,26.544414,1725552000000],[-81.280016,26.555588,1725897600000],[-81.292536,26.598947,1728921600000],[-81.333926,26.560943,1734368400000],[-81.292843,26.601367,1736787600000],[-81.307573,26.59981,1737046800000],[-81.297429,26.588229,1741021200000],[-81.289848,26.592687,1741622400000],[-81.287887,26.59577,1742227200000],[-81.29503,26.600179,1742486400000],[-81.298282,26.572426,1742832000000],[-81.307017,26.587098,1743696000000],[-81.302389,26.579993,1744041600000],[-81.312971,26.579401,1744257600000],[-81.312685,26.57756,1744905600000],[-81.311825,26.589841,1745856000000],[-81.324465,26.577705,1746115200000],[-81.321481,26.573613,1746460800000],[-81.330892,26.571018,1746720000000],[-81.329458,26.582244,1747065600000],[-81.340236,26.583014,1747324800000],[-81.319221,26.584344,1747670400000],[-81.308366,26.595664,1748534400000],[-81.285579,26.628866,1748880000000],[-81.338071,26.605086,1749484800000],[-81.310919,26.585383,1749744000000],[-81.322235,26.570315,1750089600000],[-81.340333,26.585244,1750348800000],[-81.337583,26.578885,1750694400000],[-81.297806,26.594214,1754323200000],[-81.309379,26.62506,1764608400000],[-81.314391,26.584265,1765213200000],[-81.332665,26.576233,1765472400000],[-81.296164,26.564819,1767114000000]],"FP270":[[-81.317883,26.539635,1709226000000]],"FP271":[[-81.232787,26.564657,1710172800000],[-81.269544,26.490698,1720713600000],[-81.236579,26.524056,1721664000000],[-81.236494,26.551197,1722528000000],[-81.239899,26.556663,1723132800000],[-81.265653,26.561566,1723478400000],[-81.2244,26.48571,1737046800000],[-81.196206,26.568938,1755532800000],[-81.189754,26.571718,1757347200000],[-81.22325,26.498145,1764608400000]],"K522":[[-81.274761,26.54126,1724342400000],[-81.274822,26.541332,1724688000000],[-81.27735,26.54074,1724947200000]],"K523":[[-81.274761,26.541242,1724342400000],[-81.274791,26.541251,1724688000000],[-81.27735,26.54074,1724947200000],[-81.275335,26.546252,1725897600000]],"K524":[[-81.274771,26.541251,1724342400000],[-81.274811,26.541251,1724688000000],[-81.27735,26.54074,1724947200000]],"FP272":[[-81.612293,26.843519,1738602000000],[-81.515081,26.937984,1752163200000]],"FP273":[[-81.562445,26.423571,1740070800000],[-81.537413,26.477372,1753977600000],[-81.551399,26.410016,1762189200000]],"K525":[[-81.289848,26.592642,1741622400000],[-81.296088,26.589785,1742486400000],[-81.290049,26.592596,1742832000000],[-81.290889,26.591213,1743091200000],[-81.316771,26.577081,1745856000000]],"K526":[[-81.292232,26.590109,1742227200000]],"K527":[[-81.29009,26.592975,1742832000000],[-81.29002,26.593174,1743436800000],[-81.30159,26.589421,1743696000000],[-81.305503,26.588058,1744041600000],[-81.31064,26.571181,1744905600000],[-81.328322,26.574482,1745251200000],[-81.30783,26.556849,1745510400000],[-81.319752,26.573093,1746115200000],[-81.321287,26.572638,1746460800000],[-81.326425,26.574866,1746720000000],[-81.329177,26.582317,1747065600000],[-81.334624,26.573257,1747324800000],[-81.317277,26.582119,1747670400000],[-81.304973,26.577423,1747929600000],[-81.304491,26.592738,1748534400000],[-81.286132,26.628829,1748880000000],[-81.320211,26.611808,1749139200000],[-81.337848,26.6044,1749484800000],[-81.310919,26.585293,1749744000000],[-81.327686,26.584172,1750089600000],[-81.341846,26.584084,1750348800000],[-81.355677,26.588384,1750694400000]],"FP274":[[-81.359667,26.259521,1769446800000]],"FP275":[[-81.430996,26.073949,1769446800000]],"FP276":[[-81.271418,26.485529,1769706000000]],"FP277":[[-81.35841,26.163044,1770310800000]]};
 </script>
 <script>
 (function(){
@@ -1305,11 +1346,23 @@ var MT_LC_CLASSES = {"101":{"name":"Montane - Subalpine Limber Pine Woodland","l
 
   function buildHabPopup(p){
     var c = habColorFor(p);
+    var m = mtClass(p);
     var html = '<div class="hab-pop">';
-    html += '<h4><span class="chip" style="background:' + c + '"></span>' +
-            escapeHtml(p.NAME_SITE || "Unclassified") + '</h4>';
-    html += '<div class="cat">Category: ' + escapeHtml(p.NAME_STATE || "—") + '</div>';
-    if (p.SITE) html += '<div class="cat">Class code: ' + escapeHtml(String(p.SITE)) + '</div>';
+    if (m){
+      html += '<h4><span class="chip" style="background:' + c + '"></span>' + escapeHtml(m.name) + '</h4>';
+      html += '<div class="cat">' + escapeHtml(m.l2) + '</div>';
+      html += '<div class="cat">Group: ' + escapeHtml(m.l1) + '</div>';
+      if (m.url) html += '<div style="margin-top:5px"><a href="' + escapeHtml(m.url) +
+                         '" target="_blank" rel="noopener">MT field guide &rarr;</a></div>';
+    } else {
+      html += '<h4><span class="chip" style="background:' + c + '"></span>' +
+              escapeHtml(p.NAME_SITE || "Unclassified") + '</h4>';
+      html += '<div class="cat">Category: ' + escapeHtml(p.NAME_STATE || "—") + '</div>';
+      if (p.SITE) html += '<div class="cat">Class code: ' + escapeHtml(String(p.SITE)) + '</div>';
+      var dr = drynessFor(p);
+      if (dr) html += '<div class="dry-chip" style="background:' + DRY_COLORS[dr.rank] + '">' +
+                      dr.label + ' &middot; ' + dr.hydro + '</div>';
+    }
     html += '</div>';
     return html;
   }
@@ -1345,6 +1398,7 @@ var MT_LC_CLASSES = {"101":{"name":"Montane - Subalpine Limber Pine Woodland","l
         });
         habLayers[cacheKey] = layer;
         if (habitatOn) layer.addTo(habGroup);
+        addDrynessFromTile(cacheKey, fc);
         updateHabLegend();
       })
       .catch(function(){ bumpLoading(-1); });
@@ -1440,7 +1494,7 @@ var MT_LC_CLASSES = {"101":{"name":"Montane - Subalpine Limber Pine Woodland","l
     var keys = tileKeysForBounds(map.getBounds());
     if (keys.length > 80) return; // zoomed too far out to load tile-by-tile
 
-    if (habitatOn && map.getZoom() >= CONFIG.MIN_HABITAT_ZOOM){
+    if ((habitatOn || drynessOn) && map.getZoom() >= CONFIG.MIN_HABITAT_ZOOM){
       keys.forEach(function(k){
         HAB_REGIONS.concat(['mt']).forEach(function(r){ loadHabTile(r, k[0], k[1]); });
       });
@@ -1777,6 +1831,83 @@ var MT_LC_CLASSES = {"101":{"name":"Montane - Subalpine Limber Pine Woodland","l
     });
   }
 
+  // ---------------- Dryness index (Florida) ----------------
+  // Wetness rank derived from vegetation class, per the published Florida crosswalk
+  // (Duever & Roberts): vegetation indicates hydroperiod, and the South Florida Deer
+  // Study found ~3x higher deer density on the drier end of that gradient.
+  var DRY_COLORS = { 1:'#c9a227', 2:'#9fb04a', 3:'#4e9c8f', 4:'#2f6f9e' };
+  var DRY_LABELS = {
+    1:{label:'Dry',            hydro:'0\u20131 mo flooded'},
+    2:{label:'Slightly wet',   hydro:'1\u20132 mo flooded'},
+    3:{label:'Moderately wet', hydro:'2\u20136 mo flooded'},
+    4:{label:'Wet',            hydro:'6\u201310 mo flooded'}
+  };
+
+  function drynessFor(p){
+    if (!p || typeof DRYNESS === 'undefined') return null;
+    var r = DRYNESS[p.NAME_SITE];
+    if (!r) return null;
+    var l = DRY_LABELS[r];
+    return { rank: r, label: l.label, hydro: l.hydro };
+  }
+
+  map.createPane('drynessPane');
+  map.getPane('drynessPane').style.zIndex = 375; // just beneath habitat
+  var dryGroup = L.layerGroup();
+  var drynessOn = false;
+  var dryLayers = {};
+
+  function styleDryness(feature){
+    var d = drynessFor(feature.properties || {});
+    if (!d) return { stroke:false, fill:false };
+    var c = DRY_COLORS[d.rank];
+    return { color:c, weight:0.4, opacity:0.5, fillColor:c, fillOpacity:0.62 };
+  }
+
+  function buildDryPopup(p){
+    var d = drynessFor(p);
+    if (!d) return '<div class="hab-pop"><h4>No wetness rank</h4>' +
+                   '<div class="cat">Developed or agricultural cover.</div></div>';
+    var html = '<div class="hab-pop">';
+    html += '<h4><span class="chip" style="background:' + DRY_COLORS[d.rank] + '"></span>' +
+            d.label + '</h4>';
+    html += '<div class="cat">Typical hydroperiod: ' + d.hydro + '</div>';
+    html += '<div class="cat">From vegetation: ' + escapeHtml(p.NAME_SITE || '\u2014') + '</div>';
+    html += '<div class="fire-note" style="margin-top:6px">Inferred from plant community, ' +
+            'not measured water level. Reflects the long-term regime, not this season.</div>';
+    html += '</div>';
+    return html;
+  }
+
+  // Reuses the habitat tiles already being fetched — no extra files
+  function addDrynessFromTile(cacheKey, fc){
+    if (!fc || !fc.features) return;
+    var feats = fc.features.filter(function(f){ return drynessFor(f.properties || {}); });
+    if (!feats.length) return;
+    var layer = L.geoJSON({type:'FeatureCollection', features:feats}, {
+      pane: 'drynessPane',
+      style: styleDryness,
+      onEachFeature: function(feature, l){ l.bindPopup(buildDryPopup(feature.properties || {})); }
+    });
+    dryLayers[cacheKey] = layer;
+    if (drynessOn) layer.addTo(dryGroup);
+  }
+
+  dryGroup.addTo(map);
+
+  document.getElementById("btn-dryness").onclick = function(){
+    drynessOn = !drynessOn;
+    this.classList.toggle("active", drynessOn);
+    this.textContent = "Dryness: " + (drynessOn ? "on" : "off");
+    if (drynessOn){
+      Object.keys(dryLayers).forEach(function(k){ dryLayers[k].addTo(dryGroup); });
+      refreshTiles();
+    } else {
+      dryGroup.clearLayers();
+    }
+    document.getElementById('dry-legend-wrap').style.display = drynessOn ? '' : 'none';
+  };
+
   // ---------------- Montana: hunting districts + USFS managed land ----------------
   map.createPane('districtPane');
   map.getPane('districtPane').style.zIndex = 405; // above parcels, outline only
@@ -1871,6 +2002,94 @@ var MT_LC_CLASSES = {"101":{"name":"Montane - Subalpine Limber Pine Woodland","l
       }).addTo(managedGroup);
     })
     .catch(function(){});
+
+  // ---------------- Panther tracks (FWC telemetry, Jan 2024 - Feb 2026) ----------------
+  map.createPane('pantherPane');
+  map.getPane('pantherPane').style.zIndex = 420; // above everything else
+
+  var pantherGroup = L.layerGroup();
+  var pantherOn = false;
+  var pantherCat = 'ALL';
+
+  function pantherDate(ms){
+    var d = new Date(ms);
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return m[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear();
+  }
+
+  function isKitten(cat){ return cat.charAt(0) === 'K'; }
+
+  function drawPanther(){
+    pantherGroup.clearLayers();
+    if (!pantherOn || typeof PANTHER === 'undefined') return;
+    var cats = (pantherCat === 'ALL') ? Object.keys(PANTHER) : [pantherCat];
+
+    cats.forEach(function(cat){
+      var pts = PANTHER[cat];
+      if (!pts || !pts.length) return;
+      var kit = isKitten(cat);
+      var line = kit ? '#b07aa1' : '#534AB7';
+
+      // Traced path — dashed, because consecutive fixes are ~4 days apart
+      if (pts.length > 1 && pantherCat !== 'ALL'){
+        L.polyline(pts.map(function(p){ return [p[1], p[0]]; }), {
+          pane: 'pantherPane',
+          color: line, weight: 2, opacity: 0.75, dashArray: '7,5'
+        }).addTo(pantherGroup);
+      }
+
+      pts.forEach(function(p, i){
+        var first = (i === 0), last = (i === pts.length - 1);
+        var r = (pantherCat !== 'ALL' && (first || last)) ? 6 : 4;
+        var fill = last && pantherCat !== 'ALL' ? '#E24B4A' : line;
+        L.circleMarker([p[1], p[0]], {
+          pane: 'pantherPane',
+          radius: r, weight: 1.5, color: '#fff', fillColor: fill, fillOpacity: 0.9
+        }).bindPopup(
+          '<div class="hab-pop"><h4>' + escapeHtml(cat) + (kit ? ' (kitten)' : '') + '</h4>' +
+          '<div class="cat">' + pantherDate(p[2]) + '</div>' +
+          '<div class="cat">Fix ' + (i+1) + ' of ' + pts.length + '</div>' +
+          '<div class="fire-note" style="margin-top:5px">Morning aerial telemetry. ' +
+          'Fixes average 4 days apart &mdash; lines show sequence, not route.</div></div>'
+        ).addTo(pantherGroup);
+      });
+    });
+  }
+
+  function buildPantherPicker(){
+    var sel = document.getElementById('panther-cat');
+    if (!sel || typeof PANTHER === 'undefined') return;
+    var cats = Object.keys(PANTHER).map(function(c){
+      return { id: c, n: PANTHER[c].length };
+    }).sort(function(a,b){ return b.n - a.n; });
+    var html = '<option value="ALL">All animals (' + cats.length + ')</option>';
+    cats.forEach(function(c){
+      if (c.n < 2) return; // single-fix animals can't be traced
+      html += '<option value="' + c.id + '">' + c.id + (isKitten(c.id) ? ' (kitten)' : '') +
+              ' \u2014 ' + c.n + ' fixes</option>';
+    });
+    sel.innerHTML = html;
+    sel.addEventListener('change', function(){
+      pantherCat = this.value;
+      drawPanther();
+      if (pantherCat !== 'ALL' && PANTHER[pantherCat]){
+        var pts = PANTHER[pantherCat];
+        map.fitBounds(L.latLngBounds(pts.map(function(p){ return [p[1], p[0]]; })), { padding: [40,40] });
+        if (isSmallScreen()) setPanelOpen(false);
+      }
+    });
+  }
+
+  pantherGroup.addTo(map);
+  buildPantherPicker();
+
+  document.getElementById("btn-panther").onclick = function(){
+    pantherOn = !pantherOn;
+    this.classList.toggle("active", pantherOn);
+    this.textContent = "Panther: " + (pantherOn ? "on" : "off");
+    document.getElementById('panther-wrap').style.display = pantherOn ? '' : 'none';
+    drawPanther();
+  };
 
   // ---------------- Mobile: retractable panel ----------------
   var panelEl = document.getElementById("panel");
