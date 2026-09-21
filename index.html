@@ -887,9 +887,9 @@ body{
   border:1px solid rgba(0,0,0,.3); vertical-align:-1px; margin-right:5px;
 }
 
-/* ---- Mobile: retractable control panel ---- */
+/* ---- Retractable control panel ---- */
 #panel-toggle{
-  display:none;
+  display:flex;
   position:absolute; z-index:1002; right:8px; top:8px;
   width:42px; height:42px;
   border:1px solid var(--line);
@@ -904,24 +904,54 @@ body{
 }
 #panel-toggle:active{ background:#efece2; }
 
-@media (max-width:820px){
-  #panel-toggle{ display:flex; }
+/* Panel sits below the toggle button so they never overlap */
+#panel{ top:58px; }
 
-  #panel{
-    top:58px; right:8px; left:8px; width:auto;
-    max-height:calc(100vh - 150px);
-    transform-origin:top right;
-    transition:opacity .16s ease, transform .16s ease;
-  }
-  #panel.collapsed{
-    opacity:0;
-    transform:scale(.96) translateY(-6px);
-    pointer-events:none;
-  }
-  /* give the status strip room and keep it out of the way */
-  #status{ font-size:11px; padding:8px 10px; }
-  #habitat-legend{ max-height:150px; }
+#panel.collapsed{
+  opacity:0;
+  transform:scale(.96) translateY(-6px);
+  pointer-events:none;
 }
+#panel{
+  transform-origin:top right;
+  transition:opacity .16s ease, transform .16s ease;
+}
+
+/* Narrow layout is driven by a JS-applied class on <body>, because inside an
+   iframe a CSS media query measures the iframe width, not the device. */
+body.narrow #panel{
+  right:8px; left:8px; width:auto;
+  max-height:calc(100vh - 150px);
+}
+body.narrow #status{ font-size:11px; padding:8px 10px; left:8px; right:8px; max-width:none; }
+body.narrow #habitat-legend{ max-height:150px; }
+body.narrow #topbar .brand{ font-size:13px; }
+
+/* ---- Managed lands ---- */
+.legend-note{
+  font-size:10px; line-height:1.35; color:#77715c;
+  margin-top:5px;
+}
+.ml-pop{ font-size:12.5px; min-width:215px; max-width:275px; }
+.ml-pop h4{
+  margin:0 0 5px 0;
+  font-family:"Iowan Old Style","Georgia",serif;
+  font-size:14.5px; color:var(--moss-dark);
+  border-bottom:1px solid var(--line); padding-bottom:5px;
+}
+.ml-pop .tag{
+  display:inline-block; font-size:10px; font-weight:700;
+  padding:2px 7px; border-radius:999px; margin-bottom:6px; color:#fff;
+}
+.ml-pop table{ width:100%; border-collapse:collapse; }
+.ml-pop td{ padding:2px 0; vertical-align:top; }
+.ml-pop td.k{ color:#77715c; padding-right:8px; white-space:nowrap; }
+.ml-pop td.v{ color:var(--ink); font-weight:600; word-break:break-word; }
+.ml-pop .warn{
+  margin-top:6px; padding:5px 7px; border-radius:6px;
+  background:#f7e8d6; color:#8a4420; font-size:11px; line-height:1.35;
+}
+.ml-pop a{ color:var(--moss-dark); }
 </style>
 </head>
 <body>
@@ -954,8 +984,17 @@ body{
   <div class="hr"></div>
 
   <h3>Layers</h3>
+  <button id="btn-managed" class="btn active">Managed lands: on</button>
   <button id="btn-habitat" class="btn active">Habitat: on</button>
   <button id="btn-parcels" class="btn active">Parcels: on</button>
+
+  <div class="hr"></div>
+  <h3>Managed / conservation land</h3>
+  <div class="legend-row"><span class="swatch" style="background:#5b7fc7;border-color:#2f4f8f;"></span>Federal</div>
+  <div class="legend-row"><span class="swatch" style="background:#4e9c6b;border-color:#26623f;"></span>State</div>
+  <div class="legend-row"><span class="swatch" style="background:#49a0a8;border-color:#226b72;"></span>Local / county</div>
+  <div class="legend-row"><span class="swatch" style="background:#c98b3e;border-color:#8a5a1d;"></span>Private easement</div>
+  <div class="legend-note">Private easements are conservation land but <b>not</b> open to public access.</div>
 
   <div class="hr"></div>
   <div class="legend-row"><span class="swatch" style="background:#e8a06a;border-color:#a85f2c;"></span>Private parcel</div>
@@ -1386,6 +1425,117 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
     if (!map.hasLayer(streets)){ map.addLayer(streets); map.removeLayer(imagery); }
     segStreets.classList.add("active"); segImagery.classList.remove("active");
   });
+
+  // ---------------- Managed / conservation lands (FNAI FLMA) ----------------
+  map.createPane('managedPane');
+  map.getPane('managedPane').style.zIndex = 390; // above habitat (380), below parcels (400)
+
+  var managedGroup = L.layerGroup();
+  var managedOn = true;
+  var managedLoaded = false;
+
+  var OWNER_CATS = {
+    Federal: { fill: '#5b7fc7', line: '#2f4f8f' },
+    State:   { fill: '#4e9c6b', line: '#26623f' },
+    Local:   { fill: '#49a0a8', line: '#226b72' },
+    Private: { fill: '#c98b3e', line: '#8a5a1d' },
+    Mixed:   { fill: '#8f7fae', line: '#5a4a75' }
+  };
+
+  function ownerCategory(ot){
+    var o = (ot || '').trim();
+    if (!o) return 'Mixed';
+    // Multi-owner strings like "L,S" or "S,F-USFWS,S" — treat as mixed unless all match
+    var parts = o.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    var cats = parts.map(function(p){
+      if (p.indexOf('F') === 0 && p.length > 1) return 'Federal';
+      if (p === 'F') return 'Federal';
+      if (p === 'S') return 'State';
+      if (p === 'L') return 'Local';
+      if (p === 'P') return 'Private';
+      return 'Mixed';
+    });
+    var first = cats[0];
+    return cats.every(function(c){ return c === first; }) ? first : 'Mixed';
+  }
+
+  function styleManaged(feature){
+    var cat = ownerCategory((feature.properties || {}).OWNERTYPES);
+    var c = OWNER_CATS[cat] || OWNER_CATS.Mixed;
+    var isPrivate = (cat === 'Private');
+    return {
+      color: c.line,
+      weight: isPrivate ? 1.4 : 2.2,
+      opacity: 0.95,
+      dashArray: isPrivate ? '5,4' : null,
+      fillColor: c.fill,
+      fillOpacity: 0.18
+    };
+  }
+
+  function buildManagedPopup(p){
+    var cat = ownerCategory(p.OWNERTYPES);
+    var c = OWNER_CATS[cat] || OWNER_CATS.Mixed;
+    var html = '<div class="ml-pop">';
+    html += '<span class="tag" style="background:' + c.line + '">' + cat + '</span>';
+    html += '<h4>' + escapeHtml(p.MANAME || 'Managed area') + '</h4>';
+    html += '<table>';
+    if (p.MANAGING_A) html += '<tr><td class="k">Managed by</td><td class="v">' + escapeHtml(p.MANAGING_A) + '</td></tr>';
+    if (p.OWNER)      html += '<tr><td class="k">Owner</td><td class="v">' + escapeHtml(p.OWNER) + '</td></tr>';
+    if (p.TOTACRES)   html += '<tr><td class="k">Total acres</td><td class="v">' + Math.round(p.TOTACRES).toLocaleString() + '</td></tr>';
+    if (p.COUNTY)     html += '<tr><td class="k">County</td><td class="v">' + escapeHtml(p.COUNTY) + '</td></tr>';
+    if (p.MGRPHONE)   html += '<tr><td class="k">Contact</td><td class="v">' + escapeHtml(p.MGRPHONE) + '</td></tr>';
+    html += '</table>';
+    if (p.MA_WEBSITE){
+      var u = String(p.MA_WEBSITE);
+      if (!/^https?:/i.test(u)) u = 'http://' + u;
+      html += '<div style="margin-top:6px"><a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">Official site &rarr;</a></div>';
+    }
+    if (cat === 'Private'){
+      html += '<div class="warn">Privately owned conservation land (e.g. an easement). ' +
+              'Protected, but <b>not</b> open to public access or hunting.</div>';
+    } else {
+      html += '<div class="warn" style="background:#e4eee6;color:#2a5c3a">Public conservation land. ' +
+              'Hunting access and seasons vary by area &mdash; always confirm with the managing agency before hunting.</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function loadManagedLands(){
+    if (managedLoaded) return;
+    managedLoaded = true;
+    ['collier_lee', 'st_vincent'].forEach(function(region){
+      bumpLoading(1);
+      fetch('flma/' + region + '.json')
+        .then(function(res){
+          bumpLoading(-1);
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(function(fc){
+          if (!fc || !fc.features) return;
+          L.geoJSON(fc, {
+            pane: 'managedPane',
+            style: styleManaged,
+            onEachFeature: function(feature, lyr){
+              lyr.bindPopup(buildManagedPopup(feature.properties || {}));
+            }
+          }).addTo(managedGroup);
+        })
+        .catch(function(){ bumpLoading(-1); });
+    });
+  }
+
+  managedGroup.addTo(map);
+  loadManagedLands();
+
+  document.getElementById("btn-managed").onclick = function(){
+    managedOn = !managedOn;
+    this.classList.toggle("active", managedOn);
+    this.textContent = "Managed lands: " + (managedOn ? "on" : "off");
+    if (managedOn) managedGroup.addTo(map); else map.removeLayer(managedGroup);
+  };
 
   // ---------------- Mobile: retractable panel ----------------
   var panelEl = document.getElementById("panel");
