@@ -952,6 +952,32 @@ body.narrow #topbar .brand{ font-size:13px; }
   background:#f7e8d6; color:#8a4420; font-size:11px; line-height:1.35;
 }
 .ml-pop a{ color:var(--moss-dark); }
+
+/* ---- Fire activity ---- */
+.fire-block{
+  margin-top:7px; padding:7px 8px; border-radius:6px;
+  font-size:11.5px; line-height:1.5;
+  background:#FCEBEB; color:#501313;
+}
+.fire-block.warm{ background:#FAEEDA; color:#412402; }
+.fire-block.cool{ background:#F1EFE8; color:#2C2C2A; }
+.fire-block.none{ background:#F1EFE8; color:#5F5E5A; }
+.fire-h{ font-size:10.5px; font-weight:700; margin-bottom:2px; letter-spacing:.01em; }
+.fire-note{ margin-top:4px; font-size:10px; opacity:.8; line-height:1.4; }
+
+#fire-rank{ max-height:210px; overflow-y:auto; }
+.rank-row{
+  display:flex; align-items:center; gap:7px;
+  padding:4px 2px; font-size:11px; cursor:pointer;
+  border-bottom:0.5px solid rgba(0,0,0,.05);
+}
+.rank-row:hover{ background:#f1efe6; }
+.rank-row .dot{ width:8px; height:8px; border-radius:50%; flex:none; }
+.rank-row .dot.hot{ background:#e24b4a; }
+.rank-row .dot.warm{ background:#EF9F27; }
+.rank-row .dot.cool{ background:#888780; }
+.rank-name{ flex:1; line-height:1.25; }
+.rank-date{ color:#77715c; font-size:10px; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -985,8 +1011,22 @@ body.narrow #topbar .brand{ font-size:13px; }
 
   <h3>Layers</h3>
   <button id="btn-managed" class="btn active">Managed lands: on</button>
+  <button id="btn-fire" class="btn">Fire points: off</button>
   <button id="btn-habitat" class="btn active">Habitat: on</button>
   <button id="btn-parcels" class="btn active">Parcels: on</button>
+
+  <div id="fire-legend-wrap" style="display:none">
+    <div class="hr"></div>
+    <h3>Fire detections</h3>
+    <div class="legend-row"><span class="swatch" style="background:#e24b4a;border-color:#A32D2D;"></span>This year</div>
+    <div class="legend-row"><span class="swatch" style="background:#EF9F27;border-color:#854F0B;"></span>Last year</div>
+    <div class="legend-row"><span class="swatch" style="background:#BA7517;border-color:#633806;"></span>2&ndash;3 years ago</div>
+    <div class="legend-row"><span class="swatch" style="background:#888780;border-color:#5F5E5A;"></span>Older</div>
+  </div>
+
+  <div class="hr"></div>
+  <h3>Recently burned public land</h3>
+  <div id="fire-rank"><span class="legend-empty">Loading&hellip;</span></div>
 
   <div class="hr"></div>
   <h3>Managed / conservation land</h3>
@@ -1491,6 +1531,7 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
       if (!/^https?:/i.test(u)) u = 'http://' + u;
       html += '<div style="margin-top:6px"><a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">Official site &rarr;</a></div>';
     }
+    html += fireBlockHtml(p);
     if (cat === 'Private'){
       html += '<div class="warn">Privately owned conservation land (e.g. an easement). ' +
               'Protected, but <b>not</b> open to public access or hunting.</div>';
@@ -1507,7 +1548,7 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
     managedLoaded = true;
     ['collier_lee', 'st_vincent'].forEach(function(region){
       bumpLoading(1);
-      fetch('flma/' + region + '.json')
+      fetch('flma/' + region + '_fire.json')
         .then(function(res){
           bumpLoading(-1);
           if (!res.ok) return null;
@@ -1515,6 +1556,9 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
         })
         .then(function(fc){
           if (!fc || !fc.features) return;
+          fc.features.forEach(function(f){
+            if (f.properties) allManagedProps.push(f.properties);
+          });
           L.geoJSON(fc, {
             pane: 'managedPane',
             style: styleManaged,
@@ -1522,6 +1566,7 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
               lyr.bindPopup(buildManagedPopup(feature.properties || {}));
             }
           }).addTo(managedGroup);
+          renderFireRank();
         })
         .catch(function(){ bumpLoading(-1); });
     });
@@ -1536,6 +1581,139 @@ var CLC_COLORS = {"broad":{"Bare Soil/Clear Cut":"#807564","Barren, Sinkhole, an
     this.textContent = "Managed lands: " + (managedOn ? "on" : "off");
     if (managedOn) managedGroup.addTo(map); else map.removeLayer(managedGroup);
   };
+
+  // ---------------- Fire activity (NASA FIRMS, 2023-present) ----------------
+  var FIRE_START_YEAR = 2023;
+
+  function fmtDate(iso){
+    if (!iso) return '';
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var parts = String(iso).split('-');
+    if (parts.length < 3) return iso;
+    return m[parseInt(parts[1],10)-1] + ' ' + parseInt(parts[2],10) + ', ' + parts[0];
+  }
+
+  function monthsAgo(iso){
+    if (!iso) return null;
+    var d = new Date(iso + 'T00:00:00');
+    if (isNaN(d)) return null;
+    var now = new Date();
+    return (now.getFullYear()-d.getFullYear())*12 + (now.getMonth()-d.getMonth());
+  }
+
+  function fireBlockHtml(p){
+    var nYears = (new Date()).getFullYear() - FIRE_START_YEAR + 1;
+    if (!p.FIRE_N){
+      return '<div class="fire-block none">' +
+             '<div class="fire-h">Fire activity</div>' +
+             'No satellite detections since ' + FIRE_START_YEAR + '. ' +
+             'Small or brief burns are often missed \u2014 absence isn\u2019t proof.' +
+             '</div>';
+    }
+    var ma = monthsAgo(p.FIRE_LAST);
+    var recency = (ma === null) ? '' :
+      (ma <= 12 ? 'hot' : ma <= 30 ? 'warm' : 'cool');
+    var html = '<div class="fire-block ' + recency + '">';
+    html += '<div class="fire-h">Fire activity</div>';
+    html += 'Last detected <b>' + fmtDate(p.FIRE_LAST) + '</b><br>';
+    html += p.FIRE_N.toLocaleString() + ' detection' + (p.FIRE_N===1?'':'s') +
+            ' since ' + FIRE_START_YEAR + '<br>';
+    html += 'Burned in ' + p.FIRE_YEARS + ' of last ' + nYears + ' years';
+    html += '<div class="fire-note">Satellite detections, 375 m. Brief burns between overpasses may be missed.</div>';
+    html += '</div>';
+    return html;
+  }
+
+  // Point layer — off by default
+  map.createPane('firePane');
+  map.getPane('firePane').style.zIndex = 395;
+  var fireGroup = L.layerGroup();
+  var fireOn = false;
+  var fireLoaded = false;
+
+  function fireColor(iso){
+    var y = parseInt(String(iso).slice(0,4), 10);
+    var cur = (new Date()).getFullYear();
+    if (y >= cur) return '#e24b4a';
+    if (y === cur-1) return '#EF9F27';
+    if (y >= cur-3) return '#BA7517';
+    return '#888780';
+  }
+
+  function loadFirePoints(){
+    if (fireLoaded) return;
+    fireLoaded = true;
+    ['collier_lee','st_vincent'].forEach(function(region){
+      bumpLoading(1);
+      fetch('fire/' + region + '.json')
+        .then(function(r){ bumpLoading(-1); return r.ok ? r.json() : null; })
+        .then(function(arr){
+          if (!arr) return;
+          arr.forEach(function(d){
+            L.circleMarker([d[1], d[0]], {
+              pane: 'firePane',
+              radius: 3,
+              color: fireColor(d[2]),
+              weight: 0,
+              fillColor: fireColor(d[2]),
+              fillOpacity: 0.85
+            }).bindPopup('<div class="hab-pop"><h4>Fire detection</h4>' +
+                         '<div class="cat">' + fmtDate(d[2]) + '</div>' +
+                         '<div class="cat">Radiative power: ' + d[3] + ' MW</div></div>')
+              .addTo(fireGroup);
+          });
+        })
+        .catch(function(){ bumpLoading(-1); });
+    });
+  }
+
+  document.getElementById("btn-fire").onclick = function(){
+    fireOn = !fireOn;
+    this.classList.toggle("active", fireOn);
+    this.textContent = "Fire points: " + (fireOn ? "on" : "off");
+    if (fireOn){ loadFirePoints(); fireGroup.addTo(map); }
+    else map.removeLayer(fireGroup);
+    document.getElementById('fire-legend-wrap').style.display = fireOn ? '' : 'none';
+  };
+
+  // ---------------- Ranked "recently burned public land" list ----------------
+  var rankEl = document.getElementById('fire-rank');
+  var allManagedProps = [];
+
+  function renderFireRank(){
+    if (!allManagedProps.length){
+      rankEl.innerHTML = '<span class="legend-empty">Loading\u2026</span>';
+      return;
+    }
+    var withFire = allManagedProps.filter(function(p){ return p.FIRE_N; });
+    withFire.sort(function(a,b){ return a.FIRE_LAST < b.FIRE_LAST ? 1 : -1; });
+    if (!withFire.length){
+      rankEl.innerHTML = '<span class="legend-empty">No detections on public land here.</span>';
+      return;
+    }
+    rankEl.innerHTML = withFire.slice(0, 20).map(function(p){
+      var ma = monthsAgo(p.FIRE_LAST);
+      var cls = ma <= 12 ? 'hot' : ma <= 30 ? 'warm' : 'cool';
+      return '<div class="rank-row" data-name="' + escapeHtml(p.MANAME || '') + '">' +
+             '<span class="dot ' + cls + '"></span>' +
+             '<span class="rank-name">' + escapeHtml((p.MANAME || '').replace(/ (Wildlife Management Area|State Forest|National Preserve)$/, '')) + '</span>' +
+             '<span class="rank-date">' + String(p.FIRE_LAST).slice(0,7) + '</span></div>';
+    }).join('');
+    Array.prototype.forEach.call(rankEl.querySelectorAll('.rank-row'), function(row){
+      row.addEventListener('click', function(){
+        var nm = row.getAttribute('data-name');
+        managedGroup.eachLayer(function(gj){
+          gj.eachLayer(function(l){
+            if (l.feature && l.feature.properties && l.feature.properties.MANAME === nm){
+              map.fitBounds(l.getBounds(), { maxZoom: 14 });
+              l.openPopup();
+              if (isSmallScreen()) setPanelOpen(false);
+            }
+          });
+        });
+      });
+    });
+  }
 
   // ---------------- Mobile: retractable panel ----------------
   var panelEl = document.getElementById("panel");
