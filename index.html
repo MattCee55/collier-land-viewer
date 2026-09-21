@@ -1036,8 +1036,10 @@ body.narrow #topbar .brand{ font-size:13px; }
   <h3>Basemap</h3>
   <div class="seg">
     <button id="seg-imagery" class="active">Imagery</button>
+    <button id="seg-topo">Topo</button>
     <button id="seg-streets">Streets</button>
   </div>
+  <button id="btn-relief" class="btn">Relief: off</button>
 
   <div class="hr"></div>
 
@@ -1200,6 +1202,23 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }
   );
+
+  // Topographic — contour lines and hillshading rendered from OSM + SRTM
+  var topo = L.tileLayer(
+    "https://tile.opentopomap.org/{z}/{x}/{y}.png",
+    { maxZoom: 17,
+      attribution: "&copy; <a href='https://opentopomap.org'>OpenTopoMap</a> (CC-BY-SA), &copy; OpenStreetMap contributors" }
+  );
+
+  // Shaded relief, drawn over imagery so terrain shape reads through the trees
+  map.createPane('reliefPane');
+  map.getPane('reliefPane').style.zIndex = 250;
+  map.getPane('reliefPane').style.pointerEvents = 'none';
+  var hillshade = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 16, pane: 'reliefPane', opacity: 0.45, attribution: "Esri Hillshade" }
+  );
+  var reliefOn = false;
 
   // ---------------- Parcel layer ----------------
   var loadingEl = document.getElementById("loading");
@@ -1617,13 +1636,34 @@ var PANTHER = {"FP262":[[-81.663886,26.137978,1704387600000],[-81.67311,26.14331
   // ---------------- Basemap toggle ----------------
   var segImagery = document.getElementById("seg-imagery");
   var segStreets = document.getElementById("seg-streets");
-  segImagery.addEventListener("click", function(){
-    if (!map.hasLayer(imagery)){ map.addLayer(imagery); map.removeLayer(streets); }
-    segImagery.classList.add("active"); segStreets.classList.remove("active");
-  });
-  segStreets.addEventListener("click", function(){
-    if (!map.hasLayer(streets)){ map.addLayer(streets); map.removeLayer(imagery); }
-    segStreets.classList.add("active"); segImagery.classList.remove("active");
+  var segTopo = document.getElementById("seg-topo");
+  var BASEMAPS = { imagery: imagery, topo: topo, streets: streets };
+
+  function setBasemap(key){
+    Object.keys(BASEMAPS).forEach(function(k){
+      if (k === key){ if (!map.hasLayer(BASEMAPS[k])) map.addLayer(BASEMAPS[k]); }
+      else if (map.hasLayer(BASEMAPS[k])) map.removeLayer(BASEMAPS[k]);
+    });
+    [['imagery', segImagery], ['topo', segTopo], ['streets', segStreets]].forEach(function(p){
+      if (p[1]) p[1].classList.toggle("active", p[0] === key);
+    });
+    // relief is redundant on the topo basemap, which already shades
+    var rb = document.getElementById('btn-relief');
+    if (rb) rb.style.display = (key === 'topo') ? 'none' : '';
+    if (key === 'topo' && reliefOn && map.hasLayer(hillshade)) map.removeLayer(hillshade);
+    else if (key !== 'topo' && reliefOn && !map.hasLayer(hillshade)) hillshade.addTo(map);
+  }
+
+  segImagery.addEventListener("click", function(){ setBasemap('imagery'); });
+  if (segTopo) segTopo.addEventListener("click", function(){ setBasemap('topo'); });
+  segStreets.addEventListener("click", function(){ setBasemap('streets'); });
+
+  var reliefBtn = document.getElementById('btn-relief');
+  if (reliefBtn) reliefBtn.addEventListener('click', function(){
+    reliefOn = !reliefOn;
+    this.classList.toggle('active', reliefOn);
+    this.textContent = 'Relief: ' + (reliefOn ? 'on' : 'off');
+    if (reliefOn) hillshade.addTo(map); else map.removeLayer(hillshade);
   });
 
   // ---------------- Managed / conservation lands (FNAI FLMA) ----------------
