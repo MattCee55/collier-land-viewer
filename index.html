@@ -1004,6 +1004,54 @@ body.narrow #topbar .brand{ font-size:13px; }
   border:1px solid var(--line); border-radius:7px;
   background:#fff; color:var(--ink); cursor:pointer;
 }
+
+/* ---- Pins ---- */
+#pin-cat{
+  width:100%; padding:6px 8px; font-size:12px; margin-bottom:2px;
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  border:1px solid var(--line); border-radius:7px;
+  background:#fff; color:var(--ink); cursor:pointer;
+}
+#btn-drop.armed{ background:var(--clay); border-color:#8a4420; color:#fff; }
+.pin-marker{
+  width:22px; height:22px; border-radius:50%;
+  border:2px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.45);
+  color:#fff; font-size:11px; line-height:18px; text-align:center;
+}
+#pin-list{ max-height:170px; overflow-y:auto; margin-top:6px; }
+.pin-row{
+  display:flex; align-items:flex-start; gap:7px;
+  padding:4px 2px; font-size:11px; cursor:pointer;
+  border-bottom:0.5px solid rgba(0,0,0,.05);
+}
+.pin-row:hover{ background:#f1efe6; }
+.pin-row .dot{ width:8px; height:8px; border-radius:50%; flex:none; margin-top:3px; }
+.pin-name{ flex:1; line-height:1.3; }
+.pin-ctx{ display:block; color:#8a836c; font-size:9.5px; line-height:1.35; margin-top:1px; }
+.pin-io{ display:flex; flex-direction:column; gap:0; margin-top:6px; }
+.pin-io .btn{ margin-top:4px; }
+.pin-pop{ font-size:12.5px; min-width:200px; max-width:260px; }
+.pin-pop h4{
+  margin:0 0 5px 0; font-family:"Iowan Old Style","Georgia",serif;
+  font-size:14.5px; color:var(--moss-dark);
+  border-bottom:1px solid var(--line); padding-bottom:5px;
+}
+.pin-pop .tag{
+  display:inline-block; font-size:10px; font-weight:700; color:#fff;
+  padding:2px 7px; border-radius:999px; margin-bottom:6px;
+}
+.pin-note{
+  margin-top:6px; padding:6px 8px; border-radius:6px;
+  background:#f1efe8; color:#2C2C2A; font-size:11.5px; line-height:1.45;
+}
+.pin-actions{ display:flex; gap:6px; margin-top:8px; }
+.pin-btn{
+  flex:1; padding:5px; font-size:11px; cursor:pointer;
+  border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink);
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+}
+.pin-btn:hover{ background:#f1efe6; }
+.pin-btn.danger{ color:#A32D2D; border-color:#e6c9c9; }
 </style>
 </head>
 <body>
@@ -1051,6 +1099,31 @@ body.narrow #topbar .brand{ font-size:13px; }
   <button id="btn-habitat" class="btn active">Habitat: on</button>
   <button id="btn-dryness" class="btn">Dryness: off</button>
   <button id="btn-parcels" class="btn active">Parcels: on</button>
+  <button id="btn-pins" class="btn active">Pins: on</button>
+
+  <div id="pin-wrap">
+    <div class="hr"></div>
+    <h3>Pins</h3>
+    <select id="pin-cat">
+      <option value="glass">Glassing</option>
+      <option value="sign">Sign</option>
+      <option value="camp">Camp</option>
+      <option value="access">Access</option>
+      <option value="water">Water</option>
+      <option value="kill">Kill site</option>
+      <option value="note" selected>Note</option>
+    </select>
+    <button id="btn-drop" class="btn">&#128205; Drop a pin</button>
+    <button id="btn-drop-here" class="btn">&#9062; Pin my location</button>
+    <div id="pin-list"></div>
+    <div class="pin-io">
+      <button id="btn-gpx" class="btn">Export GPX</button>
+      <button id="btn-pins-json" class="btn">Backup JSON</button>
+      <label class="btn" for="pin-import" style="text-align:center">Restore JSON</label>
+      <input type="file" id="pin-import" accept="application/json,.json" style="display:none">
+    </div>
+    <div class="legend-note">Saved in this browser on this device. Long-press the map to drop a pin anywhere. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
+  </div>
 
   <div id="dry-legend-wrap" style="display:none">
     <div class="hr"></div>
@@ -2245,6 +2318,370 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
       map.removeLayer(elkGroup);
     }
   };
+
+  // ---------------- Pins ----------------
+  // Saved to localStorage on this device/browser. Versioned so the format can
+  // evolve without breaking what's already stored.
+  var PIN_KEY = 'hlv_pins';
+  var PIN_VERSION = 1;
+  var pins = [];
+  var pinGroup = L.layerGroup();
+  var pinsOn = true;
+  var dropArmed = false;
+
+  var PIN_CATS = {
+    glass:  { label: 'Glassing',  color: '#EF9F27', icon: '\u25C9' },
+    sign:   { label: 'Sign',      color: '#4E9C6B', icon: '\u2726' },
+    camp:   { label: 'Camp',      color: '#534AB7', icon: '\u25B2' },
+    access: { label: 'Access',    color: '#2F6F9E', icon: '\u25AC' },
+    water:  { label: 'Water',     color: '#49A0A8', icon: '\u25CB' },
+    kill:   { label: 'Kill site', color: '#C0392B', icon: '\u2715' },
+    note:   { label: 'Note',      color: '#77715C', icon: '\u25A0' }
+  };
+
+  map.createPane('pinPane');
+  map.getPane('pinPane').style.zIndex = 650;
+
+  function loadPins(){
+    try {
+      var raw = localStorage.getItem(PIN_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;            // pre-version format
+      if (parsed && parsed.pins) return parsed.pins;
+      return [];
+    } catch(e){ return []; }
+  }
+
+  function savePins(){
+    try {
+      localStorage.setItem(PIN_KEY, JSON.stringify({ v: PIN_VERSION, pins: pins }));
+    } catch(e){
+      setStatus('<b>Couldn\u2019t save pins.</b> Browser storage may be full or blocked ' +
+                '(private browsing blocks it). Export to GPX to avoid losing them.');
+    }
+  }
+
+  // --- context stamping: read whatever layers are loaded under the point ---
+  function pointInLayerGroups(latlng, groups){
+    var hits = [];
+    groups.forEach(function(g){
+      if (!g) return;
+      g.eachLayer(function(gj){
+        if (!gj.eachLayer) return;
+        gj.eachLayer(function(l){
+          if (!l.feature || !l.getBounds) return;
+          try {
+            if (l.getBounds().contains(latlng) && leafletPolyContains(l, latlng)){
+              hits.push(l.feature.properties || {});
+            }
+          } catch(e){}
+        });
+      });
+    });
+    return hits;
+  }
+
+  // ray casting against a Leaflet polygon's latlngs
+  function leafletPolyContains(layer, latlng){
+    var polys = layer.getLatLngs();
+    function ringContains(ring, pt){
+      var inside = false;
+      for (var i = 0, j = ring.length - 1; i < ring.length; j = i++){
+        var xi = ring[i].lng, yi = ring[i].lat, xj = ring[j].lng, yj = ring[j].lat;
+        var intersect = ((yi > pt.lat) !== (yj > pt.lat)) &&
+                        (pt.lng < (xj - xi) * (pt.lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+    function walk(x){
+      if (!x || !x.length) return false;
+      if (x[0] instanceof L.LatLng) return ringContains(x, latlng);
+      for (var i = 0; i < x.length; i++) if (walk(x[i])) return true;
+      return false;
+    }
+    return walk(polys);
+  }
+
+  function stampContext(latlng){
+    var ctx = {};
+    // parcel
+    var parcelHits = pointInLayerGroups(latlng, [parcelGroup]);
+    if (parcelHits.length){
+      var p = parcelHits[0];
+      if (isMtParcel(p)){
+        ctx.owner = p.OwnerName;
+        ctx.access = mtParcelIsPublic(p) ? 'public' : 'private';
+        if (p.HD) ctx.hd = p.HD;
+        if (p.TotalAcres) ctx.acres = Math.round(p.TotalAcres);
+      } else {
+        var o = firstField(p, OWNER_FIELDS);
+        if (o) ctx.owner = String(o.value);
+        ctx.access = isPublic(p) ? 'public' : 'private';
+      }
+    }
+    // habitat
+    var habHits = pointInLayerGroups(latlng, [habGroup]);
+    if (habHits.length){
+      var h = habHits[0];
+      var m = mtClass(h);
+      ctx.habitat = m ? m.name : h.NAME_SITE;
+      var dr = drynessFor(h);
+      if (dr) ctx.dryness = dr.label;
+    }
+    // managed area
+    var mgHits = pointInLayerGroups(latlng, [managedGroup]);
+    if (mgHits.length) ctx.managed = mgHits[0].MANAME;
+    // elk winter range
+    if (elkLayer){
+      var elkHits = pointInLayerGroups(latlng, [elkGroup]);
+      if (elkHits.length) ctx.elk = 'winter range';
+    }
+    return ctx;
+  }
+
+  function ctxLine(c){
+    var bits = [];
+    if (c.hd)      bits.push('HD ' + c.hd);
+    if (c.managed) bits.push(c.managed);
+    if (c.owner)   bits.push(c.owner);
+    if (c.access)  bits.push(c.access);
+    if (c.habitat) bits.push(c.habitat);
+    if (c.dryness) bits.push(c.dryness);
+    if (c.elk)     bits.push(c.elk);
+    return bits.join(' \u00b7 ');
+  }
+
+  // --- rendering ---
+  function pinIcon(cat){
+    var c = PIN_CATS[cat] || PIN_CATS.note;
+    return L.divIcon({
+      className: '',
+      html: '<div class="pin-marker" style="background:' + c.color + '">' + c.icon + '</div>',
+      iconSize: [22, 22], iconAnchor: [11, 11]
+    });
+  }
+
+  function pinPopupHtml(pin, idx){
+    var c = PIN_CATS[pin.cat] || PIN_CATS.note;
+    var html = '<div class="pin-pop">';
+    html += '<span class="tag" style="background:' + c.color + '">' + c.label + '</span>';
+    html += '<h4>' + escapeHtml(pin.name || 'Unnamed pin') + '</h4>';
+    html += '<div class="cat">' + pin.lat.toFixed(5) + ', ' + pin.lng.toFixed(5) + '</div>';
+    var cl = ctxLine(pin.ctx || {});
+    if (cl) html += '<div class="cat" style="margin-top:4px">' + escapeHtml(cl) + '</div>';
+    if (pin.note) html += '<div class="pin-note">' + escapeHtml(pin.note) + '</div>';
+    html += '<div class="pin-actions">' +
+            '<button class="pin-btn" data-act="edit" data-i="' + idx + '">Edit</button>' +
+            '<button class="pin-btn danger" data-act="del" data-i="' + idx + '">Delete</button>' +
+            '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  function drawPins(){
+    pinGroup.clearLayers();
+    if (!pinsOn) return;
+    pins.forEach(function(pin, i){
+      L.marker([pin.lat, pin.lng], { pane: 'pinPane', icon: pinIcon(pin.cat) })
+        .bindPopup(pinPopupHtml(pin, i))
+        .addTo(pinGroup);
+    });
+    renderPinList();
+  }
+
+  // popup buttons are re-created each open, so delegate
+  map.on('popupopen', function(e){
+    var el = e.popup.getElement();
+    if (!el) return;
+    Array.prototype.forEach.call(el.querySelectorAll('.pin-btn'), function(b){
+      b.addEventListener('click', function(){
+        var i = parseInt(b.getAttribute('data-i'), 10);
+        if (b.getAttribute('data-act') === 'del'){
+          pins.splice(i, 1); savePins(); drawPins(); map.closePopup();
+        } else {
+          editPin(i); map.closePopup();
+        }
+      });
+    });
+  });
+
+  // --- create / edit ---
+  function addPinAt(latlng){
+    var name = prompt('Pin name:', '');
+    if (name === null) return;
+    var pin = {
+      id: Date.now(),
+      name: name || 'Pin ' + (pins.length + 1),
+      lat: latlng.lat, lng: latlng.lng,
+      cat: document.getElementById('pin-cat').value,
+      note: '',
+      ts: new Date().toISOString(),
+      ctx: stampContext(latlng)
+    };
+    pins.push(pin);
+    savePins(); drawPins();
+  }
+
+  function editPin(i){
+    var pin = pins[i];
+    if (!pin) return;
+    var name = prompt('Pin name:', pin.name);
+    if (name === null) return;
+    var note = prompt('Note (optional):', pin.note || '');
+    pin.name = name || pin.name;
+    if (note !== null) pin.note = note;
+    savePins(); drawPins();
+  }
+
+  // click-to-drop when armed
+  map.on('click', function(e){
+    if (!dropArmed) return;
+    dropArmed = false;
+    var b = document.getElementById('btn-drop');
+    b.classList.remove('armed');
+    b.textContent = '\ud83d\udccd Drop a pin';
+    document.getElementById('map').style.cursor = '';
+    addPinAt(e.latlng);
+  });
+
+  // long-press on mobile
+  var lpTimer = null;
+  map.on('mousedown touchstart', function(e){
+    if (dropArmed) return;
+    lpTimer = setTimeout(function(){ addPinAt(e.latlng); }, 650);
+  });
+  ['mouseup','touchend','dragstart','movestart','zoomstart','touchmove','mousemove'].forEach(function(ev){
+    map.on(ev, function(){ if (lpTimer){ clearTimeout(lpTimer); lpTimer = null; } });
+  });
+
+  // --- list ---
+  function renderPinList(){
+    var el = document.getElementById('pin-list');
+    if (!el) return;
+    if (!pins.length){
+      el.innerHTML = '<span class="legend-empty">No pins yet. Long-press the map, or use the button above.</span>';
+      return;
+    }
+    var sorted = pins.map(function(p, i){ return { p: p, i: i }; })
+                     .sort(function(a, b){ return (b.p.ts || '').localeCompare(a.p.ts || ''); });
+    el.innerHTML = sorted.map(function(o){
+      var c = PIN_CATS[o.p.cat] || PIN_CATS.note;
+      var cl = ctxLine(o.p.ctx || {});
+      return '<div class="pin-row" data-i="' + o.i + '">' +
+             '<span class="dot" style="background:' + c.color + '"></span>' +
+             '<span class="pin-name">' + escapeHtml(o.p.name) +
+             (cl ? '<span class="pin-ctx">' + escapeHtml(cl) + '</span>' : '') +
+             '</span></div>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('.pin-row'), function(row){
+      row.addEventListener('click', function(){
+        var pin = pins[parseInt(row.getAttribute('data-i'), 10)];
+        if (!pin) return;
+        map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 15));
+        if (isSmallScreen()) setPanelOpen(false);
+      });
+    });
+  }
+
+  // --- export / import ---
+  function downloadBlob(text, filename, mime){
+    var blob = new Blob([text], { type: mime });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  function toGPX(){
+    var esc = function(s){ return escapeHtml(String(s || '')); };
+    var out = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<gpx version="1.1" creator="2026 Hunting Land Viewer" xmlns="http://www.topografix.com/GPX/1/1">\n';
+    pins.forEach(function(p){
+      var desc = [ctxLine(p.ctx || {}), p.note].filter(Boolean).join(' | ');
+      out += '  <wpt lat="' + p.lat.toFixed(6) + '" lon="' + p.lng.toFixed(6) + '">\n';
+      out += '    <name>' + esc(p.name) + '</name>\n';
+      if (desc) out += '    <desc>' + esc(desc) + '</desc>\n';
+      out += '    <type>' + esc((PIN_CATS[p.cat] || PIN_CATS.note).label) + '</type>\n';
+      if (p.ts) out += '    <time>' + esc(p.ts) + '</time>\n';
+      out += '  </wpt>\n';
+    });
+    out += '</gpx>\n';
+    return out;
+  }
+
+  function stamp(){ return new Date().toISOString().slice(0,10); }
+
+  document.getElementById('btn-drop').addEventListener('click', function(){
+    dropArmed = !dropArmed;
+    this.classList.toggle('armed', dropArmed);
+    this.textContent = dropArmed ? 'Tap the map\u2026 (cancel)' : '\ud83d\udccd Drop a pin';
+    document.getElementById('map').style.cursor = dropArmed ? 'crosshair' : '';
+  });
+
+  document.getElementById('btn-drop-here').addEventListener('click', function(){
+    if (!navigator.geolocation){ alert("This browser doesn't support geolocation."); return; }
+    var btn = this; btn.textContent = 'Locating\u2026';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      btn.textContent = '\u2316 Pin my location';
+      addPinAt(L.latLng(pos.coords.latitude, pos.coords.longitude));
+    }, function(){
+      btn.textContent = '\u2316 Pin my location';
+      alert("Couldn't get your location.");
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  });
+
+  document.getElementById('btn-gpx').addEventListener('click', function(){
+    if (!pins.length){ alert('No pins to export.'); return; }
+    downloadBlob(toGPX(), 'pins-' + stamp() + '.gpx', 'application/gpx+xml');
+  });
+
+  document.getElementById('btn-pins-json').addEventListener('click', function(){
+    if (!pins.length){ alert('No pins to export.'); return; }
+    downloadBlob(JSON.stringify({ v: PIN_VERSION, pins: pins }, null, 2),
+                 'pins-' + stamp() + '.json', 'application/json');
+  });
+
+  document.getElementById('pin-import').addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function(){
+      try {
+        var parsed = JSON.parse(r.result);
+        var incoming = Array.isArray(parsed) ? parsed : (parsed.pins || []);
+        if (!incoming.length){ alert('No pins found in that file.'); return; }
+        var have = {};
+        pins.forEach(function(p){ have[p.lat.toFixed(5) + ',' + p.lng.toFixed(5)] = true; });
+        var added = 0;
+        incoming.forEach(function(p){
+          if (typeof p.lat !== 'number' || typeof p.lng !== 'number') return;
+          var k = p.lat.toFixed(5) + ',' + p.lng.toFixed(5);
+          if (have[k]) return;
+          pins.push(p); have[k] = true; added++;
+        });
+        savePins(); drawPins();
+        alert(added + ' pin' + (added === 1 ? '' : 's') + ' imported.');
+      } catch(err){ alert("Couldn't read that file."); }
+      e.target.value = '';
+    };
+    r.readAsText(f);
+  });
+
+  document.getElementById('btn-pins').onclick = function(){
+    pinsOn = !pinsOn;
+    this.classList.toggle('active', pinsOn);
+    this.textContent = 'Pins: ' + (pinsOn ? 'on' : 'off');
+    document.getElementById('pin-wrap').style.display = pinsOn ? '' : 'none';
+    if (pinsOn) pinGroup.addTo(map); else map.removeLayer(pinGroup);
+    drawPins();
+  };
+
+  pins = loadPins();
+  pinGroup.addTo(map);
+  drawPins();
 
   // ---------------- Show only the controls relevant to where you're looking ----------------
   // Panther, dryness and the FIRMS fire points are Florida-only datasets.
