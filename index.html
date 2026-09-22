@@ -1078,6 +1078,15 @@ body.narrow #topbar .brand{ font-size:13px; }
   }
   .leaflet-popup { display:none !important; }
 }
+
+/* ---- Water gauges ---- */
+.gauge-label{
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  font-size:11px; font-weight:700; color:#fff;
+  text-shadow:0 0 3px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.8);
+  white-space:nowrap;
+}
+#water-list{ max-height:190px; overflow-y:auto; }
 </style>
 </head>
 <body>
@@ -1123,7 +1132,7 @@ body.narrow #topbar .brand{ font-size:13px; }
   <button id="btn-panther" class="btn">Panther: off</button>
   <button id="btn-elk" class="btn">Elk winter range: off</button>
   <button id="btn-habitat" class="btn active">Habitat: on</button>
-  <button id="btn-dryness" class="btn">Dryness: off</button>
+  <button id="btn-water" class="btn">Water levels: off</button>
   <button id="btn-parcels" class="btn active">Parcels: on</button>
   <button id="btn-pins" class="btn active">Pins: on</button>
 
@@ -1151,14 +1160,18 @@ body.narrow #topbar .brand{ font-size:13px; }
     <div class="legend-note">Saved in this browser on this device. Long-press the map to drop a pin anywhere. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
   </div>
 
-  <div id="dry-legend-wrap" style="display:none">
+  <div id="water-wrap" style="display:none">
     <div class="hr"></div>
-    <h3>Dryness <span id="dry-mode">deer proxy</span></h3>
-    <div class="legend-row"><span class="swatch" style="background:#c9a227;border-color:#8a6d10;"></span>Dry &middot; 0&ndash;1 mo</div>
-    <div class="legend-row"><span class="swatch" style="background:#9fb04a;border-color:#6a7828;"></span>Slightly wet &middot; 1&ndash;2 mo</div>
-    <div class="legend-row"><span class="swatch" style="background:#4e9c8f;border-color:#2a6359;"></span>Moderately wet &middot; 2&ndash;6 mo</div>
-    <div class="legend-row"><span class="swatch" style="background:#2f6f9e;border-color:#1b4666;"></span>Wet &middot; 6&ndash;10 mo</div>
-    <div class="legend-note">Inferred from vegetation, not measured water. The South Florida Deer Study found roughly 3&times; higher deer density on the dry end of this gradient. Florida only.</div>
+    <h3>Live water levels</h3>
+    <div id="water-list"><span class="legend-empty">Turn on to fetch.</span></div>
+    <button id="btn-water-refresh" class="btn">Refresh</button>
+    <div class="legend-row" style="margin-top:6px"><span class="swatch" style="background:#C0392B;border-color:#8a2820;"></span>Rising</div>
+    <div class="legend-row"><span class="swatch" style="background:#2F6F9E;border-color:#1b4666;"></span>Steady</div>
+    <div class="legend-row"><span class="swatch" style="background:#4E9C6B;border-color:#2a6340;"></span>Falling</div>
+    <div class="legend-row"><span class="swatch" style="background:#7E8FA6;border-color:#55637a;"></span>Tidal &mdash; tracks tide</div>
+    <div class="legend-row"><span class="swatch" style="background:#888780;border-color:#5F5E5A;"></span>Not reporting</div>
+    <div class="legend-note">USGS gauges, live. Each reads against its own datum, so compare a gauge to itself over time rather than to other gauges. Arrows show 30-day change. Florida only.</div>
+  </div>
   </div>
 
   <div id="elk-wrap" style="display:none">
@@ -2103,7 +2116,8 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   dryGroup.addTo(map);
 
-  document.getElementById("btn-dryness").onclick = function(){
+  var dryBtnEl = document.getElementById("btn-dryness");
+  if (dryBtnEl) dryBtnEl.onclick = function(){
     drynessOn = !drynessOn;
     this.classList.toggle("active", drynessOn);
     this.textContent = "Dryness: " + (drynessOn ? "on" : "off");
@@ -2883,6 +2897,224 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     setTimeout(function(){ window.print(); }, 250);
   });
 
+  // ---------------- Live water levels (USGS, Florida) ----------------
+  var WATER_COUNTIES = '12021,12071';            // Collier, Lee
+  var waterGroup = L.layerGroup();
+  var waterOn = false;
+  var waterLoaded = false;
+  var waterSites = [];
+
+  map.createPane('waterPane');
+  map.getPane('waterPane').style.zIndex = 640;
+
+  function ageDays(iso){
+    var t = Date.parse(iso);
+    if (isNaN(t)) return null;
+    return (Date.now() - t) / 86400000;
+  }
+
+  function ageLabel(d){
+    if (d === null) return 'unknown';
+    if (d < 0.08) return 'just now';
+    if (d < 1) return Math.round(d * 24) + ' h ago';
+    if (d < 45) return Math.round(d) + ' d ago';
+    if (d < 400) return Math.round(d / 30) + ' mo ago';
+    return Math.round(d / 365) + ' yr ago';
+  }
+
+  // ST-TS = tidal stream; its stage tracks the tide, not inland flooding
+  function isTidal(t){ return (t || '').indexOf('TS') !== -1; }
+
+  function waterColor(s){
+    if (s.age === null || s.age > 30) return '#888780';   // stale
+    if (s.tidal) return '#7E8FA6';                        // tidal, de-emphasised
+    if (s.trend === null) return '#2F6F9E';
+    if (s.trend > 0.25) return '#C0392B';                 // rising
+    if (s.trend < -0.25) return '#4E9C6B';                // falling
+    return '#2F6F9E';
+  }
+
+  function parseIV(json){
+    var out = [];
+    var ts = json && json.value && json.value.timeSeries;
+    if (!ts) return out;
+    ts.forEach(function(t){
+      try {
+        var si = t.sourceInfo;
+        var loc = si.geoLocation.geogLocation;
+        var props = {};
+        (si.siteProperty || []).forEach(function(p){ props[p.name] = p.value; });
+        var vals = (t.values && t.values[0] && t.values[0].value) || [];
+        if (!vals.length) return;
+        var v = vals[vals.length - 1];
+        var a = ageDays(v.dateTime);
+        out.push({
+          id: si.siteCode[0].value,
+          name: si.siteName,
+          lat: loc.latitude, lng: loc.longitude,
+          val: parseFloat(v.value),
+          when: v.dateTime,
+          age: a,
+          tidal: isTidal(props.siteTypeCd),
+          type: props.siteTypeCd || '',
+          trend: null, lo: null, hi: null
+        });
+      } catch(e){}
+    });
+    return out;
+  }
+
+  function applyDV(json){
+    var ts = json && json.value && json.value.timeSeries;
+    if (!ts) return;
+    var by = {};
+    waterSites.forEach(function(s){ by[s.id] = s; });
+    ts.forEach(function(t){
+      try {
+        var id = t.sourceInfo.siteCode[0].value;
+        var s = by[id];
+        if (!s) return;
+        var vals = ((t.values && t.values[0] && t.values[0].value) || [])
+                   .map(function(v){ return parseFloat(v.value); })
+                   .filter(function(n){ return !isNaN(n) && n > -9999; });
+        if (vals.length < 2) return;
+        s.trend = vals[vals.length - 1] - vals[0];
+        s.lo = Math.min.apply(null, vals);
+        s.hi = Math.max.apply(null, vals);
+        s.days = vals.length;
+      } catch(e){}
+    });
+  }
+
+  function waterPopup(s){
+    var c = waterColor(s);
+    var html = '<div class="hab-pop">';
+    html += '<h4><span class="chip" style="background:' + c + '"></span>' +
+            escapeHtml(s.name) + '</h4>';
+    if (s.age !== null && s.age > 30){
+      html += '<div class="warn" style="background:#F1EFE8;color:#5F5E5A;margin-top:0">' +
+              'This gauge last reported <b>' + ageLabel(s.age) + '</b>. Treat the reading as ' +
+              'historical, not current.</div>';
+    }
+    html += '<div style="font-size:19px;font-weight:600;margin:5px 0 2px">' +
+            s.val.toFixed(2) + ' ft</div>';
+    html += '<div class="cat">Gage height &middot; ' + ageLabel(s.age) + '</div>';
+    if (s.trend !== null){
+      var dir = s.trend > 0.05 ? 'up' : s.trend < -0.05 ? 'down' : 'flat';
+      html += '<div class="cat" style="margin-top:4px">' +
+              (dir === 'flat' ? 'Steady' : dir === 'up' ? '\u25B2 Up' : '\u25BC Down') +
+              (dir === 'flat' ? '' : ' ' + Math.abs(s.trend).toFixed(2) + ' ft') +
+              ' over ' + (s.days || 30) + ' days</div>';
+      html += '<div class="cat">30-day range ' + s.lo.toFixed(2) + '\u2013' + s.hi.toFixed(2) + ' ft</div>';
+    }
+    if (s.tidal){
+      html += '<div class="warn" style="background:#E8EDF3;color:#2A4A6B">' +
+              '<b>Tidal gauge.</b> Stage here follows the tide, not how flooded the interior is. ' +
+              'Not a useful signal for inland water depth.</div>';
+    }
+    html += '<div class="fire-note" style="margin-top:6px">USGS provisional data, subject to revision. ' +
+            'Gage height is measured against each site\u2019s own datum \u2014 compare a gauge to ' +
+            '<i>itself</i> over time, not to other gauges.</div>';
+    html += '<div style="margin-top:6px"><a href="https://waterdata.usgs.gov/monitoring-location/' +
+            encodeURIComponent(s.id) + '/" target="_blank" rel="noopener">USGS site page &rarr;</a></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function drawWater(){
+    waterGroup.clearLayers();
+    waterSites.forEach(function(s){
+      var c = waterColor(s);
+      var stale = (s.age === null || s.age > 30);
+      L.circleMarker([s.lat, s.lng], {
+        pane: 'waterPane',
+        radius: stale ? 5 : 8,
+        weight: 2, color: '#fff',
+        fillColor: c, fillOpacity: stale ? 0.55 : 0.95
+      }).bindPopup(waterPopup(s)).addTo(waterGroup);
+
+      if (!stale){
+        L.marker([s.lat, s.lng], {
+          pane: 'waterPane',
+          icon: L.divIcon({ className:'', html:'<div class="gauge-label">' + s.val.toFixed(1) + '</div>',
+                            iconSize:[40,14], iconAnchor:[-8,7] })
+        }).addTo(waterGroup);
+      }
+    });
+    renderWaterList();
+  }
+
+  function renderWaterList(){
+    var el = document.getElementById('water-list');
+    if (!el) return;
+    if (!waterSites.length){
+      el.innerHTML = '<span class="legend-empty">No gauges loaded.</span>';
+      return;
+    }
+    var live = waterSites.filter(function(s){ return s.age !== null && s.age <= 30; });
+    var stale = waterSites.length - live.length;
+    live.sort(function(a,b){ return a.name.localeCompare(b.name); });
+    el.innerHTML = live.map(function(s){
+      var c = waterColor(s);
+      var tr = s.trend === null ? '' :
+        (s.trend > 0.05 ? ' \u25B2' : s.trend < -0.05 ? ' \u25BC' : '');
+      return '<div class="pin-row" data-id="' + s.id + '">' +
+             '<span class="dot" style="background:' + c + '"></span>' +
+             '<span class="pin-name">' + escapeHtml(s.name.replace(/, FL$/,'')) +
+             '<span class="pin-ctx">' + s.val.toFixed(2) + ' ft' + tr +
+             (s.tidal ? ' &middot; tidal' : '') + ' &middot; ' + ageLabel(s.age) + '</span></span></div>';
+    }).join('') + (stale ? '<div class="legend-note" style="margin-top:5px">' + stale +
+                   ' gauge' + (stale===1?'':'s') + ' not reporting (shown faded).</div>' : '');
+    Array.prototype.forEach.call(el.querySelectorAll('.pin-row'), function(row){
+      row.addEventListener('click', function(){
+        var s = waterSites.filter(function(x){ return x.id === row.getAttribute('data-id'); })[0];
+        if (!s) return;
+        map.setView([s.lat, s.lng], Math.max(map.getZoom(), 13));
+        if (isSmallScreen()) setPanelOpen(false);
+      });
+    });
+  }
+
+  function loadWater(){
+    if (waterLoaded) return;
+    waterLoaded = true;
+    var el = document.getElementById('water-list');
+    if (el) el.innerHTML = '<span class="legend-empty">Fetching current readings\u2026</span>';
+    bumpLoading(1);
+    var base = 'https://waterservices.usgs.gov/nwis/';
+    fetch(base + 'iv/?format=json&countyCd=' + WATER_COUNTIES +
+          '&parameterCd=00065&siteStatus=active')
+      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(j){
+        waterSites = parseIV(j);
+        drawWater();
+        // 30-day daily values give trend and range
+        return fetch(base + 'dv/?format=json&countyCd=' + WATER_COUNTIES +
+                     '&parameterCd=00065&statCd=00003&period=P30D');
+      })
+      .then(function(r){ return r && r.ok ? r.json() : null; })
+      .then(function(j){ if (j){ applyDV(j); drawWater(); } bumpLoading(-1); })
+      .catch(function(err){
+        bumpLoading(-1);
+        waterLoaded = false;
+        if (el) el.innerHTML = '<span class="legend-empty">Couldn\u2019t reach USGS (' +
+          escapeHtml(err.message || 'network error') + '). Needs a live connection.</span>';
+      });
+  }
+
+  document.getElementById('btn-water').onclick = function(){
+    waterOn = !waterOn;
+    this.classList.toggle('active', waterOn);
+    this.textContent = 'Water levels: ' + (waterOn ? 'on' : 'off');
+    document.getElementById('water-wrap').style.display = waterOn ? '' : 'none';
+    if (waterOn){ loadWater(); waterGroup.addTo(map); }
+    else map.removeLayer(waterGroup);
+  };
+
+  document.getElementById('btn-water-refresh').addEventListener('click', function(){
+    waterLoaded = false; waterSites = []; loadWater();
+  });
+
   // ---------------- Show only the controls relevant to where you're looking ----------------
   // Panther, dryness and the FIRMS fire points are Florida-only datasets.
   function inMontana(){ return map.getCenter().lng < -100; }
@@ -2897,7 +3129,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
       if (ew) ew.style.display = 'none';
     }
     [['btn-panther', 'panther-wrap'],
-     ['btn-dryness', 'dry-legend-wrap'],
+     ['btn-water',   'water-wrap'],
      ['btn-fire',    'fire-legend-wrap']].forEach(function(pair){
       var btn = document.getElementById(pair[0]);
       if (btn) btn.style.display = mt ? 'none' : '';
@@ -2905,9 +3137,9 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     if (mt){
       // collapse any Florida-only layer that was left on
       if (pantherOn) document.getElementById('btn-panther').click();
-      if (drynessOn) document.getElementById('btn-dryness').click();
+      if (waterOn)   document.getElementById('btn-water').click();
       if (fireOn)    document.getElementById('btn-fire').click();
-      ['panther-wrap','dry-legend-wrap','fire-legend-wrap'].forEach(function(id){
+      ['panther-wrap','water-wrap','fire-legend-wrap'].forEach(function(id){
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
