@@ -1087,6 +1087,17 @@ body.narrow #topbar .brand{ font-size:13px; }
   white-space:nowrap;
 }
 #water-list{ max-height:190px; overflow-y:auto; }
+
+/* ---- Pin inline edit form ---- */
+.pin-input{
+  width:100%; box-sizing:border-box; margin-bottom:5px;
+  padding:6px 7px; font-size:12px;
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  border:1px solid var(--line); border-radius:6px;
+  background:#fff; color:var(--ink);
+}
+textarea.pin-input{ resize:vertical; }
+#btn-drop.armed{ background:var(--moss); border-color:var(--moss-dark); color:#fff; }
 </style>
 </head>
 <body>
@@ -2537,15 +2548,47 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     return html;
   }
 
+  var pinMarkers = [];
+  var editingPin = null;
+
   function drawPins(){
     pinGroup.clearLayers();
+    pinMarkers = [];
     if (!pinsOn) return;
     pins.forEach(function(pin, i){
-      L.marker([pin.lat, pin.lng], { pane: 'pinPane', icon: pinIcon(pin.cat) })
-        .bindPopup(pinPopupHtml(pin, i))
+      var mk = L.marker([pin.lat, pin.lng], { pane: 'pinPane', icon: pinIcon(pin.cat) })
+        .bindPopup(function(){
+          return (editingPin === i) ? pinFormHtml(pin, i) : pinPopupHtml(pin, i);
+        })
         .addTo(pinGroup);
+      pinMarkers.push(mk);
     });
     renderPinList();
+  }
+
+  function pinFormHtml(pin, idx){
+    var opts = Object.keys(PIN_CATS).map(function(k){
+      return '<option value="' + k + '"' + (k === pin.cat ? ' selected' : '') + '>' +
+             PIN_CATS[k].label + '</option>';
+    }).join('');
+    return '<div class="pin-pop">' +
+      '<h4>Edit pin</h4>' +
+      '<input class="pin-input" id="pf-name" placeholder="Name" value="' +
+        escapeHtml(pin.name) + '">' +
+      '<select class="pin-input" id="pf-cat">' + opts + '</select>' +
+      '<textarea class="pin-input" id="pf-note" rows="2" placeholder="Note (optional)">' +
+        escapeHtml(pin.note || '') + '</textarea>' +
+      '<div class="pin-actions">' +
+        '<button class="pin-btn" data-act="save" data-i="' + idx + '">Save</button>' +
+        '<button class="pin-btn" data-act="cancel" data-i="' + idx + '">Cancel</button>' +
+      '</div></div>';
+  }
+
+  function editPin(i){
+    editingPin = i;
+    drawPins();
+    var mk = pinMarkers[i];
+    if (mk) mk.openPopup();
   }
 
   // popup buttons are re-created each open, so delegate
@@ -2556,8 +2599,21 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
       b.addEventListener('click', function(){
         var i = parseInt(b.getAttribute('data-i'), 10);
         var act = b.getAttribute('data-act');
-        if (act === 'del'){
-          pins.splice(i, 1); savePins(); drawPins(); map.closePopup();
+        if (act === 'save'){
+          var pin = pins[i];
+          if (pin){
+            var n = el.querySelector('#pf-name'), csel = el.querySelector('#pf-cat'),
+                nt = el.querySelector('#pf-note');
+            if (n && n.value.trim()) pin.name = n.value.trim();
+            if (csel) pin.cat = csel.value;
+            if (nt) pin.note = nt.value;
+            savePins();
+          }
+          editingPin = null; drawPins(); map.closePopup();
+        } else if (act === 'cancel'){
+          editingPin = null; drawPins(); map.closePopup();
+        } else if (act === 'del'){
+          pins.splice(i, 1); editingPin = null; savePins(); drawPins(); map.closePopup();
         } else if (act === 'share'){
           var p = pins[i];
           if (p) copyText(shareUrlFor(p.lat, p.lng, Math.max(map.getZoom(), 15), p.name),
@@ -2571,11 +2627,9 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   // --- create / edit ---
   function addPinAt(latlng){
-    var name = prompt('Pin name:', '');
-    if (name === null) return;
     var pin = {
       id: Date.now(),
-      name: name || 'Pin ' + (pins.length + 1),
+      name: 'Pin ' + (pins.length + 1),
       lat: latlng.lat, lng: latlng.lng,
       cat: document.getElementById('pin-cat').value,
       note: '',
@@ -2584,28 +2638,18 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     };
     pins.push(pin);
     savePins(); drawPins();
-  }
-
-  function editPin(i){
-    var pin = pins[i];
-    if (!pin) return;
-    var name = prompt('Pin name:', pin.name);
-    if (name === null) return;
-    var note = prompt('Note (optional):', pin.note || '');
-    pin.name = name || pin.name;
-    if (note !== null) pin.note = note;
-    savePins(); drawPins();
+    // open the new pin straight into its edit form so it can be named
+    var idx = pins.length - 1;
+    editingPin = idx;
+    drawPins();
+    var mk = pinMarkers[idx];
+    if (mk) mk.openPopup();
   }
 
   // click-to-drop when armed
   map.on('click', function(e){
     if (!dropArmed) return;
-    dropArmed = false;
-    var b = document.getElementById('btn-drop');
-    b.classList.remove('armed');
-    b.textContent = '\ud83d\udccd Drop a pin';
-    document.getElementById('map').style.cursor = '';
-    addPinAt(e.latlng);
+    addPinAt(e.latlng);   // stays armed — click again for another pin
   });
 
   // long-press on mobile
@@ -2678,8 +2722,9 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   document.getElementById('btn-drop').addEventListener('click', function(){
     dropArmed = !dropArmed;
+    if (dropArmed){ measureOn = false; elevOn = false; }
     this.classList.toggle('armed', dropArmed);
-    this.textContent = dropArmed ? 'Tap the map\u2026 (cancel)' : '\ud83d\udccd Drop a pin';
+    this.textContent = dropArmed ? '\u2713 Pin mode on \u2014 click to place' : '\ud83d\udccd Drop a pin';
     document.getElementById('map').style.cursor = dropArmed ? 'crosshair' : '';
   });
 
@@ -2795,6 +2840,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   document.getElementById('btn-measure').addEventListener('click', function(){
     measureOn = !measureOn;
+    if (measureOn && dropArmed) document.getElementById('btn-drop').click();
     this.classList.toggle('active', measureOn);
     this.textContent = measureOn ? 'Measuring\u2026 (done)' : '\u21c4 Measure';
     document.getElementById('measure-wrap').style.display = measureOn ? '' : 'none';
@@ -2832,6 +2878,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   document.getElementById('btn-elev').addEventListener('click', function(){
     elevOn = !elevOn;
+    if (elevOn && dropArmed) document.getElementById('btn-drop').click();
     this.classList.toggle('active', elevOn);
     this.textContent = elevOn ? 'Tap the map\u2026 (done)' : '\u25B2 Elevation';
     document.getElementById('elev-wrap').style.display = elevOn ? '' : 'none';
