@@ -1101,13 +1101,30 @@ body.narrow #topbar .brand{ font-size:13px; }
 }
 textarea.pin-input{ resize:vertical; }
 #btn-drop.armed{ background:var(--moss); border-color:var(--moss-dark); color:#fff; }
+
+/* ---- Pin icons ---- */
+.pin-marker{
+  width:26px; height:26px; border-radius:50%;
+  border:2px solid #fff; box-shadow:0 1px 6px rgba(0,0,0,.5);
+  display:flex; align-items:center; justify-content:center;
+}
+.pin-marker svg{ display:block; }
+.tag-ico{
+  display:inline-flex !important; align-items:center; gap:5px;
+}
+.pin-chip{
+  width:17px; height:17px; border-radius:50%; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  margin-top:1px;
+}
+.pin-chip svg{ display:block; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0922-1726</span></span></div>
+  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0922-1731</span></span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -1156,6 +1173,7 @@ textarea.pin-input{ resize:vertical; }
     <select id="pin-cat">
       <option value="glass">Glassing</option>
       <option value="sign">Sign</option>
+      <option value="cam">Trail cam</option>
       <option value="camp">Camp</option>
       <option value="access">Access</option>
       <option value="water">Water</option>
@@ -2416,15 +2434,53 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   var pinsOn = true;
   var dropArmed = false;
 
-  var PIN_CATS = {
-    glass:  { label: 'Glassing',  color: '#EF9F27', icon: '\u25C9' },
-    sign:   { label: 'Sign',      color: '#4E9C6B', icon: '\u2726' },
-    camp:   { label: 'Camp',      color: '#534AB7', icon: '\u25B2' },
-    access: { label: 'Access',    color: '#2F6F9E', icon: '\u25AC' },
-    water:  { label: 'Water',     color: '#49A0A8', icon: '\u25CB' },
-    kill:   { label: 'Kill site', color: '#C0392B', icon: '\u2715' },
-    note:   { label: 'Note',      color: '#77715C', icon: '\u25A0' }
+  // 24x24 line icons, drawn white on the category colour
+  var PIN_SVG = {
+    // binoculars
+    glass: '<circle cx="7" cy="14.5" r="4.4"/><circle cx="17" cy="14.5" r="4.4"/>' +
+           '<path d="M9.4 11 L10.4 5 H13.6 L14.6 11"/><path d="M11 8.5 h2"/>',
+    // cloven track
+    sign:  '<path d="M9.6 5.5 C8.2 9 7.6 12 8.2 14.6 C8.6 16.4 10.9 16.6 11.3 14.7 ' +
+           'C11.8 12.1 11.2 9 10.4 5.5 Z"/>' +
+           '<path d="M14.4 5.5 C15.8 9 16.4 12 15.8 14.6 C15.4 16.4 13.1 16.6 12.7 14.7 ' +
+           'C12.2 12.1 12.8 9 13.6 5.5 Z"/>' +
+           '<circle cx="8" cy="19" r="1.3"/><circle cx="16" cy="19" r="1.3"/>',
+    // tent
+    camp:  '<path d="M12 4.5 L20.5 19 H3.5 Z"/><path d="M12 9 L12 19"/>' +
+           '<path d="M12 19 L9 13"/><path d="M12 19 L15 13"/>',
+    // gate across a track
+    access:'<path d="M4 6.5 v11"/><path d="M20 6.5 v11"/>' +
+           '<path d="M4 9.5 h16"/><path d="M4 14.5 h16"/><path d="M4 9.5 L20 14.5"/>',
+    // droplet
+    water: '<path d="M12 4 C12 4 5.5 11.4 5.5 15.2 A6.5 6.5 0 0 0 18.5 15.2 C18.5 11.4 12 4 12 4 Z"/>',
+    // crosshair
+    kill:  '<circle cx="12" cy="12" r="6.2"/><path d="M12 2.6 v3.4"/><path d="M12 18 v3.4"/>' +
+           '<path d="M2.6 12 h3.4"/><path d="M18 12 h3.4"/><circle cx="12" cy="12" r="1.4"/>',
+    // trail camera on a strap
+    cam:   '<rect x="4" y="7.5" width="16" height="11.5" rx="2"/>' +
+           '<circle cx="12" cy="13.2" r="3.3"/><circle cx="12" cy="13.2" r="1.1"/>' +
+           '<path d="M8.5 7.5 L9.8 4.8 h4.4 L15.5 7.5"/><path d="M16.8 10.2 h1.4"/>',
+    // note
+    note:  '<path d="M6.5 4.5 h11 v15 l-5.5 -3.4 l-5.5 3.4 Z"/>'
   };
+
+  var PIN_CATS = {
+    glass:  { label: 'Glassing',    color: '#EF9F27' },
+    sign:   { label: 'Sign',        color: '#4E9C6B' },
+    cam:    { label: 'Trail cam',   color: '#7B3FA0' },
+    camp:   { label: 'Camp',        color: '#534AB7' },
+    access: { label: 'Access',      color: '#2F6F9E' },
+    water:  { label: 'Water',       color: '#49A0A8' },
+    kill:   { label: 'Kill site',   color: '#C0392B' },
+    note:   { label: 'Note',        color: '#77715C' }
+  };
+
+  function pinSvg(cat, px){
+    var d = PIN_SVG[cat] || PIN_SVG.note;
+    return '<svg viewBox="0 0 24 24" width="' + px + '" height="' + px + '" ' +
+           'fill="none" stroke="#fff" stroke-width="1.9" ' +
+           'stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+  }
 
   map.createPane('pinPane');
   map.getPane('pinPane').style.zIndex = 650;
@@ -2551,15 +2607,17 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     var c = PIN_CATS[cat] || PIN_CATS.note;
     return L.divIcon({
       className: '',
-      html: '<div class="pin-marker" style="background:' + c.color + '">' + c.icon + '</div>',
-      iconSize: [22, 22], iconAnchor: [11, 11]
+      html: '<div class="pin-marker" style="background:' + c.color + '">' +
+            pinSvg(cat, 15) + '</div>',
+      iconSize: [26, 26], iconAnchor: [13, 13]
     });
   }
 
   function pinPopupHtml(pin, idx){
     var c = PIN_CATS[pin.cat] || PIN_CATS.note;
     var html = '<div class="pin-pop">';
-    html += '<span class="tag" style="background:' + c.color + '">' + c.label + '</span>';
+    html += '<span class="tag tag-ico" style="background:' + c.color + '">' +
+            pinSvg(pin.cat, 11) + c.label + '</span>';
     html += '<h4>' + escapeHtml(pin.name || 'Unnamed pin') + '</h4>';
     html += '<div class="cat">' + pin.lat.toFixed(5) + ', ' + pin.lng.toFixed(5) + '</div>';
     var cl = ctxLine(pin.ctx || {});
@@ -2709,7 +2767,8 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
       var c = PIN_CATS[o.p.cat] || PIN_CATS.note;
       var cl = ctxLine(o.p.ctx || {});
       return '<div class="pin-row" data-i="' + o.i + '">' +
-             '<span class="dot" style="background:' + c.color + '"></span>' +
+             '<span class="pin-chip" style="background:' + c.color + '">' +
+             pinSvg(o.p.cat, 10) + '</span>' +
              '<span class="pin-name">' + escapeHtml(o.p.name) +
              (cl ? '<span class="pin-ctx">' + escapeHtml(cl) + '</span>' : '') +
              '</span></div>';
