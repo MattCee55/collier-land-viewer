@@ -1164,6 +1164,7 @@ textarea.pin-input{ resize:vertical; }
     </select>
     <button id="btn-drop" class="btn">&#128205; Drop a pin</button>
     <button id="btn-drop-here" class="btn">&#9062; Pin my location</button>
+    <div id="pin-storage-warn" class="legend-note" style="display:none;background:#F7E8D6;color:#8A4420;padding:7px 8px;border-radius:6px;margin-top:6px"></div>
     <div id="pin-list"></div>
     <div class="pin-io">
       <button id="btn-gpx" class="btn">Export GPX</button>
@@ -1171,7 +1172,7 @@ textarea.pin-input{ resize:vertical; }
       <label class="btn" for="pin-import" style="text-align:center">Restore JSON</label>
       <input type="file" id="pin-import" accept="application/json,.json" style="display:none">
     </div>
-    <div class="legend-note">Saved in this browser on this device. Long-press the map to drop a pin anywhere. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
+    <div class="legend-note">Saved in this browser on this device. <b>Double-click the map</b> to drop a pin anywhere, or turn on pin mode above and single-click. Long-press works on phones. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
   </div>
 
   <div id="dry-legend-wrap" style="display:none">
@@ -2417,6 +2418,12 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   map.createPane('pinPane');
   map.getPane('pinPane').style.zIndex = 650;
 
+  var storageOK = (function(){
+    try {
+      localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true;
+    } catch(e){ return false; }
+  })();
+
   function loadPins(){
     try {
       var raw = localStorage.getItem(PIN_KEY);
@@ -2654,10 +2661,17 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     if (mk) mk.openPopup();
   }
 
-  // click-to-drop when armed
+  // click-to-drop when pin mode is on
   map.on('click', function(e){
     if (!dropArmed) return;
     addPinAt(e.latlng);   // stays armed — click again for another pin
+  });
+
+  // double-click always drops a pin, no mode needed
+  map.doubleClickZoom.disable();
+  map.on('dblclick', function(e){
+    if (measureOn || elevOn) return;
+    addPinAt(e.latlng);
   });
 
   // long-press on mobile
@@ -2797,6 +2811,16 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   pins = loadPins();
   pinGroup.addTo(map);
   drawPins();
+
+  if (!storageOK){
+    var warn = document.getElementById('pin-storage-warn');
+    if (warn){
+      warn.style.display = '';
+      warn.innerHTML = '<b>Pins can\u2019t be saved here.</b> This browser is blocking storage, ' +
+        'which usually means the map is embedded in another page. Pins you drop will vanish on ' +
+        'reload. Open the map at its own address to save them, or export to GPX before leaving.';
+    }
+  }
 
   // ---------------- Measure ----------------
   var measureOn = false, measurePts = [], measureLayer = L.layerGroup().addTo(map);
