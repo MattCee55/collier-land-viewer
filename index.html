@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>2026 Hunting Land Viewer</title>
+<title>2026 Public Land Viewer</title>
 <style>
 /* required styles */
 
@@ -1052,13 +1052,39 @@ body.narrow #topbar .brand{ font-size:13px; }
 }
 .pin-btn:hover{ background:#f1efe6; }
 .pin-btn.danger{ color:#A32D2D; border-color:#e6c9c9; }
+
+/* ---- Tools ---- */
+.tool-out{
+  font-size:11.5px; line-height:1.5; color:var(--ink);
+  background:#f1efe8; border-radius:6px; padding:6px 8px; margin-top:5px;
+}
+#btn-measure.active, #btn-elev.active{
+  background:var(--clay); border-color:#8a4420; color:#fff;
+}
+
+/* ---- Print: map only, no chrome ---- */
+@media print{
+  @page { margin: 8mm; }
+  #panel, #panel-toggle, #topbar, #loading, .leaflet-control-zoom { display:none !important; }
+  #status{
+    position:static !important; max-width:none !important; box-shadow:none !important;
+    border:none !important; padding:6px 0 0 0 !important; font-size:9px !important;
+  }
+  html, body { height:auto !important; background:#fff !important; }
+  #map{
+    position:relative !important; inset:auto !important;
+    width:100% !important; height:185mm !important;
+    page-break-inside:avoid;
+  }
+  .leaflet-popup { display:none !important; }
+}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>2026 Hunting Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire</span></div>
+  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire</span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -1179,6 +1205,22 @@ body.narrow #topbar .brand{ font-size:13px; }
     <h3>Habitat in view <span id="legend-mode"></span></h3>
     <div id="habitat-legend"><span class="legend-empty">Zoom in to load habitat&hellip;</span></div>
   </div>
+
+  <div class="hr"></div>
+  <h3>Tools</h3>
+  <button id="btn-measure" class="btn">&#8644; Measure</button>
+  <div id="measure-wrap" style="display:none">
+    <div id="measure-out" class="tool-out"></div>
+    <button id="btn-measure-clear" class="btn">Clear</button>
+  </div>
+
+  <button id="btn-elev" class="btn">&#9650; Elevation</button>
+  <div id="elev-wrap" style="display:none">
+    <div id="elev-out" class="tool-out"><span class="legend-empty">Tap a point on the map.</span></div>
+  </div>
+
+  <button id="btn-share-view" class="btn">&#128279; Copy link to this view</button>
+  <button id="btn-print" class="btn">&#128424; Print / save image</button>
 
   <div class="hr"></div>
   <button id="btn-locate" class="btn">📍 Find my location</button>
@@ -2473,6 +2515,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     if (cl) html += '<div class="cat" style="margin-top:4px">' + escapeHtml(cl) + '</div>';
     if (pin.note) html += '<div class="pin-note">' + escapeHtml(pin.note) + '</div>';
     html += '<div class="pin-actions">' +
+            '<button class="pin-btn" data-act="share" data-i="' + idx + '">Share</button>' +
             '<button class="pin-btn" data-act="edit" data-i="' + idx + '">Edit</button>' +
             '<button class="pin-btn danger" data-act="del" data-i="' + idx + '">Delete</button>' +
             '</div>';
@@ -2498,8 +2541,13 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     Array.prototype.forEach.call(el.querySelectorAll('.pin-btn'), function(b){
       b.addEventListener('click', function(){
         var i = parseInt(b.getAttribute('data-i'), 10);
-        if (b.getAttribute('data-act') === 'del'){
+        var act = b.getAttribute('data-act');
+        if (act === 'del'){
           pins.splice(i, 1); savePins(); drawPins(); map.closePopup();
+        } else if (act === 'share'){
+          var p = pins[i];
+          if (p) copyText(shareUrlFor(p.lat, p.lng, Math.max(map.getZoom(), 15), p.name),
+                          'Link to this pin copied.');
         } else {
           editPin(i); map.closePopup();
         }
@@ -2682,6 +2730,158 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   pins = loadPins();
   pinGroup.addTo(map);
   drawPins();
+
+  // ---------------- Measure ----------------
+  var measureOn = false, measurePts = [], measureLayer = L.layerGroup().addTo(map);
+
+  function fmtDist(m){
+    var mi = m / 1609.344;
+    if (mi < 0.19) return Math.round(m * 3.28084) + ' ft';
+    return mi.toFixed(2) + ' mi';
+  }
+  function bearing(a, b){
+    var t1 = a.lat * Math.PI/180, t2 = b.lat * Math.PI/180;
+    var dl = (b.lng - a.lng) * Math.PI/180;
+    var y = Math.sin(dl) * Math.cos(t2);
+    var x = Math.cos(t1)*Math.sin(t2) - Math.sin(t1)*Math.cos(t2)*Math.cos(dl);
+    return (Math.atan2(y, x) * 180/Math.PI + 360) % 360;
+  }
+  function compass(d){
+    var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    return dirs[Math.round(d / 22.5) % 16];
+  }
+
+  function redrawMeasure(){
+    measureLayer.clearLayers();
+    if (measurePts.length === 0){
+      document.getElementById('measure-out').innerHTML =
+        '<span class="legend-empty">Tap two or more points on the map.</span>';
+      return;
+    }
+    measurePts.forEach(function(p){
+      L.circleMarker(p, { radius:4, color:'#fff', weight:2,
+                          fillColor:'#C0392B', fillOpacity:1 }).addTo(measureLayer);
+    });
+    if (measurePts.length > 1){
+      L.polyline(measurePts, { color:'#C0392B', weight:2.5, dashArray:'6,4' }).addTo(measureLayer);
+    }
+    var total = 0;
+    for (var i = 1; i < measurePts.length; i++) total += measurePts[i-1].distanceTo(measurePts[i]);
+    var html = '<b>' + fmtDist(total) + '</b> total';
+    if (measurePts.length === 2){
+      var b = bearing(measurePts[0], measurePts[1]);
+      html += '<br>' + Math.round(b) + '\u00b0 ' + compass(b);
+    } else if (measurePts.length > 2){
+      html += '<br>' + (measurePts.length - 1) + ' legs';
+      var last = bearing(measurePts[measurePts.length-2], measurePts[measurePts.length-1]);
+      html += ' \u00b7 last leg ' + Math.round(last) + '\u00b0 ' + compass(last);
+    }
+    document.getElementById('measure-out').innerHTML = html;
+  }
+
+  document.getElementById('btn-measure').addEventListener('click', function(){
+    measureOn = !measureOn;
+    this.classList.toggle('active', measureOn);
+    this.textContent = measureOn ? 'Measuring\u2026 (done)' : '\u21c4 Measure';
+    document.getElementById('measure-wrap').style.display = measureOn ? '' : 'none';
+    document.getElementById('map').style.cursor = measureOn ? 'crosshair' : '';
+    if (!measureOn){ measurePts = []; measureLayer.clearLayers(); }
+    else redrawMeasure();
+  });
+  document.getElementById('btn-measure-clear').addEventListener('click', function(){
+    measurePts = []; redrawMeasure();
+  });
+
+  // ---------------- Elevation on tap ----------------
+  var elevOn = false;
+  var elevMarker = null;
+
+  function lookupElevation(latlng){
+    var out = document.getElementById('elev-out');
+    out.innerHTML = 'Looking up\u2026';
+    if (elevMarker) map.removeLayer(elevMarker);
+    elevMarker = L.circleMarker(latlng, { radius:5, color:'#fff', weight:2,
+                                          fillColor:'#2F6F9E', fillOpacity:1 }).addTo(map);
+    fetch('https://api.open-meteo.com/v1/elevation?latitude=' + latlng.lat.toFixed(5) +
+          '&longitude=' + latlng.lng.toFixed(5))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d || !d.elevation || !d.elevation.length){ out.innerHTML = 'No elevation returned.'; return; }
+        var m = d.elevation[0];
+        var ft = Math.round(m * 3.28084);
+        out.innerHTML = '<b>' + ft.toLocaleString() + ' ft</b> (' + Math.round(m) + ' m)<br>' +
+                        '<span style="color:#8a836c">' + latlng.lat.toFixed(5) + ', ' +
+                        latlng.lng.toFixed(5) + '</span>';
+      })
+      .catch(function(){ out.innerHTML = 'Lookup failed \u2014 needs a connection.'; });
+  }
+
+  document.getElementById('btn-elev').addEventListener('click', function(){
+    elevOn = !elevOn;
+    this.classList.toggle('active', elevOn);
+    this.textContent = elevOn ? 'Tap the map\u2026 (done)' : '\u25B2 Elevation';
+    document.getElementById('elev-wrap').style.display = elevOn ? '' : 'none';
+    document.getElementById('map').style.cursor = elevOn ? 'crosshair' : '';
+    if (!elevOn && elevMarker){ map.removeLayer(elevMarker); elevMarker = null; }
+  });
+
+  // shared click handling for measure + elevation (pins handled separately above)
+  map.on('click', function(e){
+    if (measureOn){ measurePts.push(e.latlng); redrawMeasure(); return; }
+    if (elevOn){ lookupElevation(e.latlng); return; }
+  });
+
+  // ---------------- Share a location as a link ----------------
+  function shareUrlFor(lat, lng, zoom, label){
+    var base = location.origin + location.pathname;
+    var h = '#at=' + lat.toFixed(5) + ',' + lng.toFixed(5) + ',' + (zoom || map.getZoom());
+    if (label) h += '&n=' + encodeURIComponent(label);
+    return base + h;
+  }
+
+  function copyText(t, okMsg){
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); alert(okMsg); } catch(e){ prompt('Copy this link:', t); }
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ alert(okMsg); }, fallback);
+    } else fallback();
+  }
+
+  document.getElementById('btn-share-view').addEventListener('click', function(){
+    var c = map.getCenter();
+    copyText(shareUrlFor(c.lat, c.lng, map.getZoom()), 'Link to this view copied.');
+  });
+
+  // read an incoming #at= link
+  (function applyHash(){
+    var h = location.hash.replace(/^#/, '');
+    if (!h) return;
+    var parts = {};
+    h.split('&').forEach(function(kv){
+      var i = kv.indexOf('=');
+      if (i > 0) parts[kv.slice(0, i)] = decodeURIComponent(kv.slice(i+1));
+    });
+    if (!parts.at) return;
+    var a = parts.at.split(',');
+    var lat = parseFloat(a[0]), lng = parseFloat(a[1]), z = parseInt(a[2], 10) || 15;
+    if (isNaN(lat) || isNaN(lng)) return;
+    map.setView([lat, lng], z);
+    L.marker([lat, lng]).addTo(map)
+      .bindPopup('<div class="hab-pop"><h4>' + escapeHtml(parts.n || 'Shared location') + '</h4>' +
+                 '<div class="cat">' + lat.toFixed(5) + ', ' + lng.toFixed(5) + '</div></div>')
+      .openPopup();
+  })();
+
+  // ---------------- Print / save as image ----------------
+  document.getElementById('btn-print').addEventListener('click', function(){
+    if (isSmallScreen()) setPanelOpen(false);
+    setTimeout(function(){ window.print(); }, 250);
+  });
 
   // ---------------- Show only the controls relevant to where you're looking ----------------
   // Panther, dryness and the FIRMS fire points are Florida-only datasets.
