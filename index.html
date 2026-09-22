@@ -1115,8 +1115,8 @@ textarea.pin-input{ resize:vertical; }
   <h3>Location</h3>
   <select id="region-select">
     <optgroup label="Florida">
-      <option value="collier" selected>Collier County</option>
-      <option value="lee">Lee County</option>
+      <option value="collier">Collier County &mdash; Big Cypress</option>
+      <option value="lee" selected>Lee County &mdash; Flint Pen Strand</option>
       <option value="stvincent">St. Vincent Island</option>
     </optgroup>
     <optgroup label="Montana">
@@ -1129,9 +1129,9 @@ textarea.pin-input{ resize:vertical; }
 
   <h3>Basemap</h3>
   <div class="seg">
-    <button id="seg-imagery" class="active">Imagery</button>
+    <button id="seg-imagery">Imagery</button>
     <button id="seg-topo">Topo</button>
-    <button id="seg-streets">Streets</button>
+    <button id="seg-streets" class="active">Streets</button>
   </div>
   <button id="btn-relief" class="btn">Relief: off</button>
 
@@ -1144,7 +1144,7 @@ textarea.pin-input{ resize:vertical; }
   <button id="btn-elk" class="btn">Elk winter range: off</button>
   <button id="btn-habitat" class="btn active">Habitat: on</button>
   <button id="btn-water" class="btn">Water levels: off</button>
-  <button id="btn-parcels" class="btn active">Parcels: on</button>
+  <button id="btn-parcels" class="btn">Parcels: off</button>
   <button id="btn-pins" class="btn active">Pins: on</button>
 
   <div id="pin-wrap">
@@ -1278,16 +1278,16 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   // Same-origin static files — no live queries, no CORS, no JSONP.
   // ============================================================
   var CONFIG = {
-    START_CENTER: [26.155, -81.55],
-    START_ZOOM: 15,
+    START_CENTER: [26.425, -81.700],   // Flint Pen Strand, Lee County
+    START_ZOOM: 13,
     MIN_PARCEL_ZOOM: 14,
     MIN_HABITAT_ZOOM: 12,
     FINE_HABITAT_ZOOM: 15   // at/above this zoom, color by specific type
   };
 
   var REGIONS_VIEW = {
-    collier:   { center: [26.155, -81.55],  zoom: 15 },
-    lee:       { center: [26.605, -81.87],  zoom: 14 },
+    collier:   { center: [26.000, -81.100], zoom: 11 },   // Big Cypress
+    lee:       { center: [26.425, -81.700], zoom: 13 },   // Flint Pen Strand
     stvincent: { center: [29.661, -85.144], zoom: 14 },
     mt270:     { center: [45.9631, -113.9111], zoom: 10 },
     mt321:     { center: [45.5641, -113.6165], zoom: 10 }
@@ -1344,12 +1344,12 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   var imagery = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     { maxZoom: 20, attribution: "Esri World Imagery" }
-  ).addTo(map);
+  );
 
   var streets = L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }
-  );
+  ).addTo(map);
 
   // Topographic — contour lines and hillshading rendered from OSM + SRTM
   var topo = L.tileLayer(
@@ -1494,7 +1494,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   var parcelGroup = L.layerGroup();
   var habGroup = L.layerGroup();
-  var parcelsOn = true;
+  var parcelsOn = false;
   var habitatOn = true;
   var statusEl = document.getElementById("status");
 
@@ -1765,7 +1765,10 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   var mtDistrictBounds = {}; // "270" -> L.LatLngBounds, filled by the MT district layer
 
   function goToRegion(key){
-    if (key === 'mt270' || key === 'mt321'){
+    var isMt = (key === 'mt270' || key === 'mt321');
+    setBasemap(isMt ? 'topo' : 'streets');
+    if (parcelsOn) document.getElementById('btn-parcels').click();  // parcels off by default
+    if (isMt){
       var hd = key.slice(2);
       if (mtDistrictBounds[hd]){
         map.fitBounds(mtDistrictBounds[hd], { padding: [20,20] });
