@@ -2241,7 +2241,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   // ---------------- Panther tracks (FWC telemetry, Jan 2024 - Feb 2026) ----------------
   map.createPane('pantherPane');
-  map.getPane('pantherPane').style.zIndex = 420; // above everything else
+  map.getPane('pantherPane').style.zIndex = 640; // above parcels, habitat, wetness, districts
 
   var pantherGroup = L.layerGroup();
   var pantherOn = false;
@@ -2280,14 +2280,19 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
       var kit = isKitten(cat);
       var line = pantherColor[cat] || '#534AB7';
 
-      // Traced path — dashed, because consecutive fixes average ~4 days apart
+      // Traced path — dashed, because consecutive fixes average ~4 days apart.
+      // White casing underneath keeps it legible over habitat, imagery or parcels.
       if (pts.length > 1){
-        L.polyline(pts.map(function(p){ return [p[1], p[0]]; }), {
+        var latlngs = pts.map(function(p){ return [p[1], p[0]]; });
+        var w = (pantherCat === 'ALL') ? 2.6 : 3.6;
+        L.polyline(latlngs, {
           pane: 'pantherPane',
-          color: line,
-          weight: pantherCat === 'ALL' ? 1.6 : 2.4,
-          opacity: pantherCat === 'ALL' ? 0.6 : 0.85,
-          dashArray: kit ? '3,4' : '7,5'
+          color: '#ffffff', weight: w + 3, opacity: 0.85, lineCap: 'round'
+        }).addTo(pantherGroup);
+        L.polyline(latlngs, {
+          pane: 'pantherPane',
+          color: line, weight: w, opacity: 1,
+          dashArray: kit ? '4,5' : '9,6', lineCap: 'butt'
         }).addTo(pantherGroup);
       }
 
