@@ -1107,7 +1107,7 @@ textarea.pin-input{ resize:vertical; }
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire</span></div>
+  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0922-1726</span></span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -1272,6 +1272,17 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 <script>
 (function(){
   "use strict";
+
+  // If anything throws, everything after it silently stops running — which in an
+  // embedded page looks like "the feature is broken". Show it instead.
+  window.addEventListener('error', function(ev){
+    var el = document.getElementById('status');
+    if (!el) return;
+    el.innerHTML = '<b>Script error:</b> ' + String(ev.message || 'unknown') +
+                   '<br><span style="opacity:.75">line ' + (ev.lineno || '?') +
+                   ' \u2014 features after this point won\u2019t work.</span>';
+    el.style.background = '#FCEBEB';
+  });
 
   // ============================================================
   // CONFIG — everything loads from static, pre-built tiles:
