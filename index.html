@@ -1124,7 +1124,7 @@ textarea.pin-input{ resize:vertical; }
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0922-1731</span></span></div>
+  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0923-0146</span></span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -1190,7 +1190,7 @@ textarea.pin-input{ resize:vertical; }
       <label class="btn" for="pin-import" style="text-align:center">Restore JSON</label>
       <input type="file" id="pin-import" accept="application/json,.json" style="display:none">
     </div>
-    <div class="legend-note">Saved in this browser on this device. <b>Double-click the map</b> to drop a pin anywhere, or turn on pin mode above and single-click. Long-press works on phones. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
+    <div class="legend-note">Saved in this browser on this device. Two ways: <b>double-click</b> the map any time, or switch on pin mode above and then <b>single-click</b> for each pin. On phones, long-press. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
   </div>
 
   <div id="dry-legend-wrap" style="display:none">
@@ -2740,6 +2740,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   map.doubleClickZoom.disable();
   map.on('dblclick', function(e){
     if (measureOn || elevOn) return;
+    if (dropArmed) return;   // single-click already placed one; don't triple-drop
     addPinAt(e.latlng);
   });
 
@@ -2816,7 +2817,10 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     dropArmed = !dropArmed;
     if (dropArmed){ measureOn = false; elevOn = false; }
     this.classList.toggle('armed', dropArmed);
-    this.textContent = dropArmed ? '\u2713 Pin mode on \u2014 click to place' : '\ud83d\udccd Drop a pin';
+    var verb = ('ontouchstart' in window) ? 'tap' : 'click';
+    this.textContent = dropArmed
+      ? '\u2713 Pin mode on \u2014 ' + verb + ' to place'
+      : '\ud83d\udccd Drop a pin';
     document.getElementById('map').style.cursor = dropArmed ? 'crosshair' : '';
   });
 
