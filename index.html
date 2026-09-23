@@ -1118,13 +1118,42 @@ textarea.pin-input{ resize:vertical; }
   margin-top:1px;
 }
 .pin-chip svg{ display:block; }
+
+/* ---- Collapsible panel sections ---- */
+.sec{ border-bottom:1px solid var(--line); }
+.sec:last-child{ border-bottom:none; }
+.sec-h{
+  width:100%; text-align:left; cursor:pointer;
+  background:none; border:none; padding:9px 0 8px;
+  font-family:"Iowan Old Style","Georgia",serif;
+  font-size:13.5px; font-weight:700; color:var(--moss-dark);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.sec-h::after{ content:'\25be'; font-size:11px; opacity:.55; transition:transform .15s; }
+.sec.open .sec-h::after{ transform:rotate(180deg); }
+.sec-b{ display:none; padding-bottom:9px; }
+.sec.open .sec-b{ display:block; }
+
+/* ---- Condensed popups ---- */
+.more-btn{
+  margin-top:7px; width:100%; padding:5px;
+  font-size:11px; cursor:pointer; color:var(--moss-dark);
+  background:#f1efe8; border:1px solid var(--line); border-radius:6px;
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+}
+.more-btn:hover{ background:#e9e6db; }
+.more-body{ margin-top:6px; }
+@media (max-width:820px){
+  .leaflet-popup-content{ max-height:46vh; overflow-y:auto; }
+  .leaflet-popup-content-wrapper{ max-width:82vw; }
+}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0923-0146</span></span></div>
+  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0923-0246</span></span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -1132,146 +1161,149 @@ textarea.pin-input{ resize:vertical; }
 <button id="panel-toggle" aria-label="Toggle controls">☰</button>
 
 <div id="panel">
-  <h3>Location</h3>
-  <select id="region-select">
-    <optgroup label="Florida">
-      <option value="collier">Collier County &mdash; Big Cypress</option>
-      <option value="lee" selected>Lee County &mdash; Flint Pen Strand</option>
-      <option value="stvincent">St. Vincent Island</option>
-    </optgroup>
-    <optgroup label="Montana">
-      <option value="mt270">Unit 270</option>
-      <option value="mt321">Unit 321</option>
-    </optgroup>
-  </select>
 
-  <div class="hr"></div>
-
-  <h3>Basemap</h3>
-  <div class="seg">
-    <button id="seg-imagery">Imagery</button>
-    <button id="seg-topo">Topo</button>
-    <button id="seg-streets" class="active">Streets</button>
-  </div>
-  <button id="btn-relief" class="btn">Relief: off</button>
-
-  <div class="hr"></div>
-
-  <h3>Layers</h3>
-  <button id="btn-managed" class="btn active">Managed lands: on</button>
-  <button id="btn-fire" class="btn">Fire points: off</button>
-  <button id="btn-panther" class="btn">Panther: off</button>
-  <button id="btn-elk" class="btn">Elk winter range: off</button>
-  <button id="btn-habitat" class="btn active">Habitat: on</button>
-  <button id="btn-dryness" class="btn">Wetness: off</button>
-  <button id="btn-parcels" class="btn">Parcels: off</button>
-  <button id="btn-pins" class="btn active">Pins: on</button>
-
-  <div id="pin-wrap">
-    <div class="hr"></div>
-    <h3>Pins</h3>
-    <select id="pin-cat">
-      <option value="glass">Glassing</option>
-      <option value="sign">Sign</option>
-      <option value="cam">Trail cam</option>
-      <option value="camp">Camp</option>
-      <option value="access">Access</option>
-      <option value="water">Water</option>
-      <option value="kill">Kill site</option>
-      <option value="note" selected>Note</option>
-    </select>
-    <button id="btn-drop" class="btn">&#128205; Drop a pin</button>
-    <button id="btn-drop-here" class="btn">&#9062; Pin my location</button>
-    <div id="pin-storage-warn" class="legend-note" style="display:none;background:#F7E8D6;color:#8A4420;padding:7px 8px;border-radius:6px;margin-top:6px"></div>
-    <div id="pin-list"></div>
-    <div class="pin-io">
-      <button id="btn-gpx" class="btn">Export GPX</button>
-      <button id="btn-pins-json" class="btn">Backup JSON</button>
-      <label class="btn" for="pin-import" style="text-align:center">Restore JSON</label>
-      <input type="file" id="pin-import" accept="application/json,.json" style="display:none">
+  <div class="sec open" data-sec="place">
+    <button class="sec-h" type="button">Location &amp; basemap</button>
+    <div class="sec-b">
+      <select id="region-select">
+        <optgroup label="Florida">
+          <option value="collier">Collier County &mdash; Big Cypress</option>
+          <option value="lee" selected>Lee County &mdash; Flint Pen Strand</option>
+          <option value="stvincent">St. Vincent Island</option>
+        </optgroup>
+        <optgroup label="Montana">
+          <option value="mt270">Unit 270</option>
+          <option value="mt321">Unit 321</option>
+        </optgroup>
+      </select>
+      <div class="seg" style="margin-top:6px">
+        <button id="seg-imagery">Imagery</button>
+        <button id="seg-topo">Topo</button>
+        <button id="seg-streets" class="active">Streets</button>
+      </div>
+      <button id="btn-relief" class="btn">Relief: off</button>
     </div>
-    <div class="legend-note">Saved in this browser on this device. Two ways: <b>double-click</b> the map any time, or switch on pin mode above and then <b>single-click</b> for each pin. On phones, long-press. Pins record what's under them &mdash; owner, habitat, district, winter range. <b>Export to GPX</b> to carry them on a GPS or phone app; clearing browser data erases them.</div>
   </div>
 
-  <div id="dry-legend-wrap" style="display:none">
-    <div class="hr"></div>
-    <h3>Wetness <span id="dry-mode">deer proxy</span></h3>
-    <div class="legend-row"><span class="swatch" style="background:#c9a227;border-color:#8a6d10;"></span>Dry &middot; 0&ndash;1 mo</div>
-    <div class="legend-row"><span class="swatch" style="background:#9fb04a;border-color:#6a7828;"></span>Slightly wet &middot; 1&ndash;2 mo</div>
-    <div class="legend-row"><span class="swatch" style="background:#4e9c8f;border-color:#2a6359;"></span>Moderately wet &middot; 2&ndash;6 mo</div>
-    <div class="legend-row"><span class="swatch" style="background:#2f6f9e;border-color:#1b4666;"></span>Wet &middot; 6&ndash;10 mo</div>
-    <div class="legend-note">Months per year the ground is typically flooded, inferred from the plant community. The South Florida Deer Study found roughly 3&times; higher deer density on the dry end of this gradient. Reflects the long-term regime, not this season. Florida only.</div>
-  </div>
-  </div>
-  </div>
+  <div class="sec open" data-sec="layers">
+    <button class="sec-h" type="button">Layers</button>
+    <div class="sec-b">
+      <button id="btn-managed" class="btn active">Managed lands: on</button>
+      <button id="btn-fire" class="btn">Fire points: off</button>
+      <button id="btn-panther" class="btn">Panther: off</button>
+      <button id="btn-elk" class="btn">Elk winter range: off</button>
+      <button id="btn-habitat" class="btn active">Habitat: on</button>
+      <button id="btn-dryness" class="btn">Wetness: off</button>
+      <button id="btn-parcels" class="btn">Parcels: off</button>
+      <button id="btn-pins" class="btn active">Pins: on</button>
 
-  <div id="elk-wrap" style="display:none">
-    <div class="hr"></div>
-    <h3>Elk winter range</h3>
-    <div class="legend-row"><span class="swatch" style="background:#9B5DC0;border-color:#7B3FA0;"></span>Dec&ndash;Apr concentration</div>
-    <div class="legend-note"><b>HD 270: 55%</b> of the unit &middot; <b>HD 321: 5%</b>.<br><br>General elk range covers ~100% of both units, so it can't tell them apart &mdash; winter range can. Elk shift onto it when snow pushes them, not on a date, so in a warm fall they may still be high through November.</div>
-  </div>
+      <div id="panther-wrap" style="display:none">
+        <div class="hr"></div>
+        <h3>Panther tracks</h3>
+        <select id="panther-cat"></select>
+        <div class="legend-note" style="margin-top:6px">Each animal has its own colour. Solid-dash = adult, fine-dash = kitten. Enlarged dot = first fix, red = most recent.<br><br>FWC aerial telemetry, Jan 2024 &ndash; Feb 2026. Fixes average 4 days apart, taken at morning rest sites &mdash; lines show <b>sequence, not the route walked</b>. Pick one animal to isolate its track.</div>
+      </div>
 
-  <div id="panther-wrap" style="display:none">
-    <div class="hr"></div>
-    <h3>Panther tracks</h3>
-    <select id="panther-cat"></select>
-    <div class="legend-note" style="margin-top:6px">Each animal has its own colour. Solid-dash = adult, fine-dash = kitten. Enlarged dot = first fix, red = most recent.<br><br>FWC aerial telemetry, Jan 2024 &ndash; Feb 2026. Fixes average 4 days apart, taken at morning rest sites &mdash; lines show <b>sequence, not the route walked</b>. Pick one animal to isolate its track.</div>
-  </div>
+      <div id="elk-wrap" style="display:none">
+        <div class="hr"></div>
+        <h3>Elk winter range</h3>
+        <div class="legend-row"><span class="swatch" style="background:#9B5DC0;border-color:#7B3FA0;"></span>Dec&ndash;Apr concentration</div>
+        <div class="legend-note"><b>HD 270: 55%</b> of the unit &middot; <b>HD 321: 5%</b>.<br><br>General elk range covers ~100% of both units, so it can't tell them apart &mdash; winter range can.</div>
+      </div>
 
-  <div id="fire-legend-wrap" style="display:none">
-    <div class="hr"></div>
-    <h3>Fire detections</h3>
-    <div class="legend-row"><span class="swatch" style="background:#e24b4a;border-color:#A32D2D;"></span>This year</div>
-    <div class="legend-row"><span class="swatch" style="background:#EF9F27;border-color:#854F0B;"></span>Last year</div>
-    <div class="legend-row"><span class="swatch" style="background:#BA7517;border-color:#633806;"></span>2&ndash;3 years ago</div>
-    <div class="legend-row"><span class="swatch" style="background:#888780;border-color:#5F5E5A;"></span>Older</div>
-  </div>
+      <div id="dry-legend-wrap" style="display:none">
+        <div class="hr"></div>
+        <h3>Wetness <span id="dry-mode">deer proxy</span></h3>
+        <div class="legend-row"><span class="swatch" style="background:#c9a227;border-color:#8a6d10;"></span>Dry &middot; 0&ndash;1 mo</div>
+        <div class="legend-row"><span class="swatch" style="background:#9fb04a;border-color:#6a7828;"></span>Slightly wet &middot; 1&ndash;2 mo</div>
+        <div class="legend-row"><span class="swatch" style="background:#4e9c8f;border-color:#2a6359;"></span>Moderately wet &middot; 2&ndash;6 mo</div>
+        <div class="legend-row"><span class="swatch" style="background:#2f6f9e;border-color:#1b4666;"></span>Wet &middot; 6&ndash;10 mo</div>
+        <div class="legend-note">Months per year the ground is typically flooded, inferred from the plant community. Florida only.</div>
+      </div>
 
-  <div class="hr"></div>
-  <h3>Recently burned public land</h3>
-  <div id="fire-rank"><span class="legend-empty">Loading&hellip;</span></div>
+      <div id="fire-legend-wrap" style="display:none">
+        <div class="hr"></div>
+        <h3>Fire detections</h3>
+        <div class="legend-row"><span class="swatch" style="background:#e24b4a;border-color:#A32D2D;"></span>This year</div>
+        <div class="legend-row"><span class="swatch" style="background:#EF9F27;border-color:#854F0B;"></span>Last year</div>
+        <div class="legend-row"><span class="swatch" style="background:#BA7517;border-color:#633806;"></span>2&ndash;3 years ago</div>
+        <div class="legend-row"><span class="swatch" style="background:#888780;border-color:#5F5E5A;"></span>Older</div>
+        <div class="hr"></div>
+        <h3>Recently burned public land</h3>
+        <div id="fire-rank"><span class="legend-empty">Loading&hellip;</span></div>
+      </div>
 
-  <div class="hr"></div>
-  <h3>Managed / conservation land</h3>
-  <div class="legend-row"><span class="swatch" style="background:#5b7fc7;border-color:#2f4f8f;"></span>Federal</div>
-  <div class="legend-row"><span class="swatch" style="background:#4e9c6b;border-color:#26623f;"></span>State</div>
-  <div class="legend-row"><span class="swatch" style="background:#49a0a8;border-color:#226b72;"></span>Local / county</div>
-  <div class="legend-row"><span class="swatch" style="background:#c98b3e;border-color:#8a5a1d;"></span>Private easement</div>
-  <div class="legend-note">Private easements are conservation land but <b>not</b> open to public access.</div>
+      <div class="hr"></div>
+      <h3>Managed / conservation land</h3>
+      <div class="legend-row"><span class="swatch" style="background:#5b7fc7;border-color:#2f4f8f;"></span>Federal</div>
+      <div class="legend-row"><span class="swatch" style="background:#4e9c6b;border-color:#26623f;"></span>State</div>
+      <div class="legend-row"><span class="swatch" style="background:#49a0a8;border-color:#226b72;"></span>Local / county</div>
+      <div class="legend-row"><span class="swatch" style="background:#c98b3e;border-color:#8a5a1d;"></span>Private easement</div>
+      <div class="legend-note">Private easements are conservation land but <b>not</b> open to public access.</div>
 
-  <div class="hr"></div>
-  <div class="legend-row"><span class="swatch" style="background:#e8a06a;border-color:#a85f2c;"></span>Private parcel</div>
-  <div class="legend-row"><span class="swatch" style="background:#7fb08a;border-color:#2f6b40;"></span>Public / government</div>
+      <div class="hr"></div>
+      <div class="legend-row"><span class="swatch" style="background:#e8a06a;border-color:#a85f2c;"></span>Private parcel</div>
+      <div class="legend-row"><span class="swatch" style="background:#7fb08a;border-color:#2f6b40;"></span>Public / government</div>
 
-  <div id="habitat-legend-wrap">
-    <div class="hr"></div>
-    <h3>Habitat in view <span id="legend-mode"></span></h3>
-    <div id="habitat-legend"><span class="legend-empty">Zoom in to load habitat&hellip;</span></div>
-  </div>
-
-  <div class="hr"></div>
-  <h3>Tools</h3>
-  <button id="btn-measure" class="btn">&#8644; Measure</button>
-  <div id="measure-wrap" style="display:none">
-    <div id="measure-out" class="tool-out"></div>
-    <button id="btn-measure-clear" class="btn">Clear</button>
-  </div>
-
-  <button id="btn-elev" class="btn">&#9650; Elevation</button>
-  <div id="elev-wrap" style="display:none">
-    <div id="elev-out" class="tool-out"><span class="legend-empty">Tap a point on the map.</span></div>
+      <div id="habitat-legend-wrap">
+        <div class="hr"></div>
+        <h3>Habitat in view <span id="legend-mode"></span></h3>
+        <div id="habitat-legend"><span class="legend-empty">Zoom in to load habitat&hellip;</span></div>
+      </div>
+    </div>
   </div>
 
-  <button id="btn-share-view" class="btn">&#128279; Copy link to this view</button>
-  <button id="btn-print" class="btn">&#128424; Print / save image</button>
+  <div class="sec" data-sec="pins">
+    <button class="sec-h" type="button">Pins</button>
+    <div class="sec-b">
+      <div id="pin-wrap">
+        <select id="pin-cat">
+          <option value="glass">Glassing</option>
+          <option value="sign">Sign</option>
+          <option value="cam">Trail cam</option>
+          <option value="camp">Camp</option>
+          <option value="access">Access</option>
+          <option value="water">Water</option>
+          <option value="kill">Kill site</option>
+          <option value="note" selected>Note</option>
+        </select>
+        <button id="btn-drop" class="btn">&#128205; Drop a pin</button>
+        <button id="btn-drop-here" class="btn">&#9062; Pin my location</button>
+        <div id="pin-storage-warn" class="legend-note" style="display:none;background:#F7E8D6;color:#8A4420;padding:7px 8px;border-radius:6px;margin-top:6px"></div>
+        <div id="pin-list"></div>
+        <div class="pin-io">
+          <button id="btn-gpx" class="btn">Export GPX</button>
+          <button id="btn-pins-json" class="btn">Backup JSON</button>
+          <label class="btn" for="pin-import" style="text-align:center">Restore JSON</label>
+          <input type="file" id="pin-import" accept="application/json,.json" style="display:none">
+        </div>
+        <div class="legend-note">Saved in this browser on this device. Two ways: <b>double-click</b> the map any time, or switch on pin mode above and then <b>single-click</b> for each pin. On phones, long-press. <b>Export to GPX</b> to carry them on a GPS app.</div>
+      </div>
+    </div>
+  </div>
 
-  <div class="hr"></div>
-  <button id="btn-locate" class="btn">📍 Find my location</button>
+  <div class="sec" data-sec="tools">
+    <button class="sec-h" type="button">Tools</button>
+    <div class="sec-b">
+      <button id="btn-measure" class="btn">&#8644; Measure</button>
+      <div id="measure-wrap" style="display:none">
+        <div id="measure-out" class="tool-out"></div>
+        <button id="btn-measure-clear" class="btn">Clear</button>
+      </div>
+      <button id="btn-elev" class="btn">&#9650; Elevation</button>
+      <div id="elev-wrap" style="display:none">
+        <div id="elev-out" class="tool-out"><span class="legend-empty">Tap a point on the map.</span></div>
+      </div>
+      <button id="btn-share-view" class="btn">&#128279; Copy link to this view</button>
+      <button id="btn-print" class="btn">&#128424; Print / save image</button>
+      <button id="btn-locate" class="btn">📍 Find my location</button>
+    </div>
+  </div>
+
 </div>
 
 <div id="status">
-  <b>Heads up:</b> Florida parcels from the 2025 DOR tax roll; habitat from FWC/FNAI Cooperative Land Cover v4.0; fire from NASA FIRMS; panther tracks from FWC telemetry. Montana districts from MT FWP; parcels and public land from the Montana State Library (Sept 2026). Reference only &mdash; not a survey.
+  <b>Heads up:</b> Florida parcels from the 2025 DOR tax roll; habitat from FWC/FNAI Cooperative Land Cover v4.0; fire from NASA FIRMS; panther tracks from FWC telemetry. Montana districts from MT FWP; parcels and public land from the Montana State Library. Reference only &mdash; not a survey.
 </div>
 <script>
 /* @preserve
@@ -1426,18 +1458,21 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     if (p.AddressLin) html += rowHtml('Site address', p.AddressLin);
     var mail = [p.OwnerAddre, p.OwnerCity, p.OwnerState].filter(Boolean).join(', ');
     if (mail)         html += rowHtml('Mailing', mail);
-    if (p.PropType)   html += rowHtml('Type', p.PropType);
     if (p.TotalAcres) html += rowHtml('Acres', Number(p.TotalAcres).toLocaleString());
-    if (p.TotalValue) html += rowHtml('Assessed value', '$' + Number(p.TotalValue).toLocaleString());
+    html += '</table>';
+    var rest = '<table>';
+    if (p.PropType)   rest += rowHtml('Type', p.PropType);
+    if (p.TotalValue) rest += rowHtml('Assessed value', '$' + Number(p.TotalValue).toLocaleString());
     var use = [];
     if (p.ForestAcre) use.push(Math.round(p.ForestAcre) + ' forest');
     if (p.GrazingAcr) use.push(Math.round(p.GrazingAcr) + ' grazing');
     if (p.IrrigatedA) use.push(Math.round(p.IrrigatedA) + ' irrigated');
-    if (use.length)   html += rowHtml('Land use', use.join(' &middot; ') + ' ac');
+    if (use.length)   rest += rowHtml('Land use', use.join(' &middot; ') + ' ac');
     if (p.Township && p.Range && p.Section)
-      html += rowHtml('PLSS', 'T' + p.Township + ' R' + p.Range + ' S' + p.Section);
-    if (p.HD)         html += rowHtml('Hunting district', p.HD);
-    html += '</table>';
+      rest += rowHtml('PLSS', 'T' + p.Township + ' R' + p.Range + ' S' + p.Section);
+    if (p.HD)         rest += rowHtml('Hunting district', p.HD);
+    rest += '</table>';
+    html += moreBlock(rest);
     if (p.PARCELID) html += '<div class="cat" style="margin-top:5px;font-size:10.5px;color:#77715c">' +
                             escapeHtml(p.PARCELID) + '</div>';
     html += '</div>';
@@ -1453,6 +1488,14 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
       fillColor: pub ? "#7fb08a" : "#e8a06a",
       fillOpacity: 0.16
     };
+  }
+
+  var _moreId = 0;
+  function moreBlock(html){
+    if (!html) return '';
+    var id = 'more' + (_moreId++);
+    return '<button class="more-btn" data-more="' + id + '">More detail \u25be</button>' +
+           '<div class="more-body" id="' + id + '" style="display:none">' + html + '</div>';
   }
 
   function rowHtml(label, val){
@@ -1482,12 +1525,12 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     var html = '<div class="parcel-pop">';
     html += '<span class="tag ' + (pub ? "public" : "private") + '">' + (pub ? "Public / gov't" : "Private") + "</span>";
     html += "<h4>" + escapeHtml(owner ? String(owner.value) : "Owner not listed") + "</h4>";
-    html += "<table>";
-    html += rowHtml("Parcel ID", pid ? pid.value : "");
-    html += rowHtml("Mailing address", mailing);
-    html += rowHtml("Acreage", acres ? acres.value : "");
-    html += rowHtml("Land use code", use ? use.value : "");
-    html += "</table>";
+    html += "<table>" + rowHtml("Acreage", acres ? acres.value : "") + "</table>";
+    var rest = "<table>" +
+      rowHtml("Parcel ID", pid ? pid.value : "") +
+      rowHtml("Mailing address", mailing) +
+      rowHtml("Land use code", use ? use.value : "") + "</table>";
+    html += moreBlock(rest);
     if (!owner && !pid){
       html += '<div class="empty">No attribute data returned for this parcel.</div>';
     }
@@ -1820,8 +1863,10 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   var segStreets = document.getElementById("seg-streets");
   var segTopo = document.getElementById("seg-topo");
   var BASEMAPS = { imagery: imagery, topo: topo, streets: streets };
+  var currentBasemap = 'streets';
 
   function setBasemap(key){
+    currentBasemap = key;
     Object.keys(BASEMAPS).forEach(function(k){
       if (k === key){ if (!map.hasLayer(BASEMAPS[k])) map.addLayer(BASEMAPS[k]); }
       else if (map.hasLayer(BASEMAPS[k])) map.removeLayer(BASEMAPS[k]);
@@ -1834,6 +1879,7 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     if (rb) rb.style.display = (key === 'topo') ? 'none' : '';
     if (key === 'topo' && reliefOn && map.hasLayer(hillshade)) map.removeLayer(hillshade);
     else if (key !== 'topo' && reliefOn && !map.hasLayer(hillshade)) hillshade.addTo(map);
+    writeState();
   }
 
   segImagery.addEventListener("click", function(){ setBasemap('imagery'); });
@@ -1901,26 +1947,30 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     var html = '<div class="ml-pop">';
     html += '<span class="tag" style="background:' + c.line + '">' + cat + '</span>';
     html += '<h4>' + escapeHtml(p.MANAME || 'Managed area') + '</h4>';
-    html += '<table>';
-    if (p.MANAGING_A) html += '<tr><td class="k">Managed by</td><td class="v">' + escapeHtml(p.MANAGING_A) + '</td></tr>';
-    if (p.OWNER)      html += '<tr><td class="k">Owner</td><td class="v">' + escapeHtml(p.OWNER) + '</td></tr>';
-    if (p.TOTACRES)   html += '<tr><td class="k">Total acres</td><td class="v">' + Math.round(p.TOTACRES).toLocaleString() + '</td></tr>';
-    if (p.COUNTY)     html += '<tr><td class="k">County</td><td class="v">' + escapeHtml(p.COUNTY) + '</td></tr>';
-    if (p.MGRPHONE)   html += '<tr><td class="k">Contact</td><td class="v">' + escapeHtml(p.MGRPHONE) + '</td></tr>';
-    html += '</table>';
+    var head = '<table>';
+    if (p.MANAGING_A) head += '<tr><td class="k">Managed by</td><td class="v">' + escapeHtml(p.MANAGING_A) + '</td></tr>';
+    if (p.TOTACRES)   head += '<tr><td class="k">Acres</td><td class="v">' + Math.round(p.TOTACRES).toLocaleString() + '</td></tr>';
+    head += '</table>';
+    var rest = '<table>';
+    if (p.OWNER)    rest += '<tr><td class="k">Owner</td><td class="v">' + escapeHtml(p.OWNER) + '</td></tr>';
+    if (p.COUNTY)   rest += '<tr><td class="k">County</td><td class="v">' + escapeHtml(p.COUNTY) + '</td></tr>';
+    if (p.MGRPHONE) rest += '<tr><td class="k">Contact</td><td class="v">' + escapeHtml(p.MGRPHONE) + '</td></tr>';
+    rest += '</table>';
+    html += head;
     if (p.MA_WEBSITE){
       var u = String(p.MA_WEBSITE);
       if (!/^https?:/i.test(u)) u = 'http://' + u;
       html += '<div style="margin-top:6px"><a href="' + escapeHtml(u) + '" target="_blank" rel="noopener">Official site &rarr;</a></div>';
     }
-    html += fireBlockHtml(p);
+    var tail = fireBlockHtml(p);
     if (cat === 'Private'){
-      html += '<div class="warn">Privately owned conservation land (e.g. an easement). ' +
+      tail += '<div class="warn">Privately owned conservation land (e.g. an easement). ' +
               'Protected, but <b>not</b> open to public access or hunting.</div>';
     } else {
-      html += '<div class="warn" style="background:#e4eee6;color:#2a5c3a">Public conservation land. ' +
-              'Hunting access and seasons vary by area &mdash; always confirm with the managing agency before hunting.</div>';
+      tail += '<div class="warn" style="background:#e4eee6;color:#2a5c3a">Public conservation land. ' +
+              'Confirm seasons and access with the managing agency.</div>';
     }
+    html += moreBlock(rest + tail);
     html += '</div>';
     return html;
   }
@@ -2424,6 +2474,40 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
     }
   };
 
+  // ---------------- Remembered state ----------------
+  var STATE_KEY = 'hlv_state';
+  var STATE_VERSION = 1;
+
+  function readState(){
+    try {
+      var raw = localStorage.getItem(STATE_KEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      return (o && o.v === STATE_VERSION) ? o : null;
+    } catch(e){ return null; }
+  }
+
+  var savedState = readState();
+  var stateReady = false;
+
+  function writeState(){
+    if (!stateReady) return;
+    try {
+      var c = map.getCenter();
+      localStorage.setItem(STATE_KEY, JSON.stringify({
+        v: STATE_VERSION,
+        lat: +c.lat.toFixed(5), lng: +c.lng.toFixed(5), z: map.getZoom(),
+        base: currentBasemap,
+        relief: reliefOn,
+        layers: {
+          managed: managedOn, habitat: habitatOn, parcels: parcelsOn,
+          fire: fireOn, panther: pantherOn, dryness: drynessOn,
+          elk: elkOn, pins: pinsOn
+        }
+      }));
+    } catch(e){}
+  }
+
   // ---------------- Pins ----------------
   // Saved to localStorage on this device/browser. Versioned so the format can
   // evolve without breaking what's already stored.
@@ -2679,6 +2763,16 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
   map.on('popupopen', function(e){
     var el = e.popup.getElement();
     if (!el) return;
+    Array.prototype.forEach.call(el.querySelectorAll('.more-btn'), function(b){
+      b.addEventListener('click', function(){
+        var body = el.querySelector('#' + b.getAttribute('data-more'));
+        if (!body) return;
+        var open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : '';
+        b.innerHTML = open ? 'More detail \u25be' : 'Less \u25b4';
+        if (e.popup.update) e.popup.update();
+      });
+    });
     Array.prototype.forEach.call(el.querySelectorAll('.pin-btn'), function(b){
       b.addEventListener('click', function(){
         var i = parseInt(b.getAttribute('data-i'), 10);
@@ -3083,6 +3177,68 @@ var ELK_WINTER = {"type":"FeatureCollection","features":[{"type":"Feature","prop
 
   map.on('moveend', updateRegionalControls);
   updateRegionalControls();
+
+  // ---------------- Apply remembered state, then start saving ----------------
+  (function restore(){
+    if (savedState && !location.hash){
+      try {
+        map.setView([savedState.lat, savedState.lng], savedState.z);
+        if (savedState.base && BASEMAPS[savedState.base]) setBasemap(savedState.base);
+        if (savedState.relief && !reliefOn) document.getElementById('btn-relief').click();
+        var L_ = savedState.layers || {};
+        var pairs = [
+          ['managed',  function(){ return managedOn; }, 'btn-managed'],
+          ['habitat',  function(){ return habitatOn; }, 'btn-habitat'],
+          ['parcels',  function(){ return parcelsOn; }, 'btn-parcels'],
+          ['fire',     function(){ return fireOn;    }, 'btn-fire'],
+          ['panther',  function(){ return pantherOn; }, 'btn-panther'],
+          ['dryness',  function(){ return drynessOn; }, 'btn-dryness'],
+          ['elk',      function(){ return elkOn;     }, 'btn-elk'],
+          ['pins',     function(){ return pinsOn;    }, 'btn-pins']
+        ];
+        pairs.forEach(function(p){
+          var want = L_[p[0]];
+          if (want === undefined) return;
+          var btn = document.getElementById(p[2]);
+          if (btn && btn.offsetParent !== null && p[1]() !== want) btn.click();
+        });
+      } catch(e){}
+    }
+    stateReady = true;
+    map.on('moveend zoomend', writeState);
+    // every layer button also persists
+    ['btn-managed','btn-habitat','btn-parcels','btn-fire','btn-panther',
+     'btn-dryness','btn-elk','btn-pins','btn-relief'].forEach(function(id){
+      var b = document.getElementById(id);
+      if (b) b.addEventListener('click', function(){ setTimeout(writeState, 0); });
+    });
+  })();
+
+  // ---------------- Collapsible panel sections ----------------
+  var SEC_KEY = 'hlv_secs';
+  (function sections(){
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SEC_KEY) || '{}'); } catch(e){}
+    var secs = Array.prototype.slice.call(document.querySelectorAll('.sec'));
+    secs.forEach(function(sec){
+      var key = sec.getAttribute('data-sec');
+      if (saved[key] !== undefined) sec.classList.toggle('open', !!saved[key]);
+      var h = sec.querySelector('.sec-h');
+      if (!h) return;
+      h.addEventListener('click', function(){
+        sec.classList.toggle('open');
+        var st = {};
+        secs.forEach(function(x){ st[x.getAttribute('data-sec')] = x.classList.contains('open'); });
+        try { localStorage.setItem(SEC_KEY, JSON.stringify(st)); } catch(e){}
+      });
+    });
+    // on a phone, start with just Layers open so the panel isn't a wall
+    if (window.matchMedia('(max-width:820px)').matches && !Object.keys(saved).length){
+      secs.forEach(function(sec){
+        sec.classList.toggle('open', sec.getAttribute('data-sec') === 'layers');
+      });
+    }
+  })();
 
   // ---------------- Mobile: retractable panel ----------------
   var panelEl = document.getElementById("panel");
