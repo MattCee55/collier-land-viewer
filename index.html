@@ -1153,7 +1153,7 @@ textarea.pin-input{ resize:vertical; }
 <div id="map"></div>
 
 <div id="topbar">
-  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0925-1609</span></span></div>
+  <div class="brand"><b>2026 Public Land Viewer</b><span>Florida &amp; Montana &middot; parcels, habitat, public land, fire &middot; <span id="buildtag">b0925-1626</span></span></div>
 </div>
 
 <div id="loading">Loading&hellip;</div>
@@ -1226,8 +1226,8 @@ textarea.pin-input{ resize:vertical; }
       <div id="oak-wrap" style="display:none">
         <div class="hr"></div>
         <h3>Oak habitat</h3>
-        <div class="legend-row"><span class="swatch" style="background:#8C6A2F;border-color:#5f4720;"></span>Oak-dominated</div>
-        <div class="legend-row"><span class="swatch" style="background:#B9A05C;border-color:#7d6b3c;"></span>Oaks present</div>
+        <div class="legend-row"><span class="swatch" style="background:#F25C05;border-color:#B33F00;"></span>Oak-dominated</div>
+        <div class="legend-row"><span class="swatch" style="background:#FFA033;border-color:#C96A00;"></span>Oaks present</div>
         <div class="legend-note"><b>73,300 acres</b> in Collier &amp; Lee, of which <b>35,400 on public land</b>.<br><br>Oak-dominated covers hammocks, scrub and scrubby flatwoods &mdash; live oak, laurel oak, sand live oak, myrtle oak. Inferred from FNAI community type, not surveyed trees; acorn crops swing hard year to year. Florida only.</div>
       </div>
 
@@ -3174,13 +3174,14 @@ var MT_FIRE = {"type":"FeatureCollection","features":[{"type":"Feature","propert
   var oakOn = false;
   var oakLoadedKeys = {}, oakLayers = {};
 
-  var OAK_T1 = '#8C6A2F', OAK_T2 = '#B9A05C';
+  var OAK_T1 = '#F25C05', OAK_T2 = '#FFA033';
 
   function styleOak(f){
     var t = f.properties.t;
     var c = (t === 1) ? OAK_T1 : OAK_T2;
-    return { color: c, weight: t === 1 ? 1.2 : 0.8, opacity: 0.9,
-             fillColor: c, fillOpacity: t === 1 ? 0.62 : 0.4 };
+    return { color: (t === 1) ? '#B33F00' : '#C96A00',
+             weight: t === 1 ? 1.4 : 1.0, opacity: 0.95,
+             fillColor: c, fillOpacity: t === 1 ? 0.78 : 0.55 };
   }
 
   function oakPopup(p){
