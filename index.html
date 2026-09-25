@@ -1195,6 +1195,7 @@ textarea.pin-input{ resize:vertical; }
       <button id="btn-mtfire" class="btn">Burns: off</button>
       <button id="btn-habitat" class="btn active">Habitat: on</button>
       <button id="btn-trails" class="btn">Trails: off</button>
+      <button id="btn-roads" class="btn" style="display:none">Roads: off</button>
       <button id="btn-oak" class="btn">Oak habitat: off</button>
       <button id="btn-dryness" class="btn">Wetness: off</button>
       <button id="btn-parcels" class="btn">Parcels: off</button>
@@ -1227,21 +1228,34 @@ textarea.pin-input{ resize:vertical; }
       <div id="trails-wrap" style="display:none">
         <div class="hr"></div>
         <h3>Trails</h3>
-        <div class="legend-row"><span class="swatch" style="background:#D94F00;border-color:#8a3200;"></span>Off-highway vehicle</div>
-        <div class="legend-row"><span class="swatch" style="background:#B8860B;border-color:#7a5a07;"></span>Multi-use</div>
-        <div class="legend-row"><span class="swatch" style="background:#2E7D32;border-color:#1b4d1e;"></span>Hiking</div>
-        <div class="legend-row"><span class="swatch" style="background:#6A5ACD;border-color:#453b8a;"></span>Biking</div>
-        <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #8B5A2B;"></span>Equestrian</div>
-        <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #2F6F9E;"></span>Paddling</div>
-        <div class="legend-row"><span class="swatch" style="background:#F2C200;border-color:#a88700;"></span>Florida Nat'l Scenic Trail</div>
-        <div class="hr"></div>
-        <div class="legend-row"><span class="swatch" style="background:#D94F00;border-color:#8a3200;"></span>Montana: motorized, yearlong</div>
-        <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #B8860B;"></span>Montana: motorized, seasonal</div>
-        <div class="legend-note" style="background:#F7E8D6;color:#8A4420;padding:7px 8px;border-radius:6px;margin-top:6px"><b>Big Cypress ORV:</b> secondary trails are closed under a court settlement; only primary trails are open, and the data doesn't distinguish them. Confirm at a kiosk or the Oasis ORV Office.</div>
-        <div class="legend-note"><b>Florida:</b> 1,138 segments from FDEP Office of Greenways &amp; Trails (Feb 2026) plus NPS for Big Cypress. FDEP notes their layer is incomplete.<br><br><b>Montana:</b> 238 segments, 479 miles, from the Forest Service Motor Vehicle Use Map — Bitterroot and Salmon-Challis. 160 of them are seasonal. Only motorized routes are included; walk-in trails are not. "Open" means legally open, not passable.</div>
+        <div id="trails-fl-legend">
+          <div class="legend-row"><span class="swatch" style="background:#D94F00;border-color:#8a3200;"></span>Off-highway vehicle</div>
+          <div class="legend-row"><span class="swatch" style="background:#B8860B;border-color:#7a5a07;"></span>Multi-use</div>
+          <div class="legend-row"><span class="swatch" style="background:#2E7D32;border-color:#1b4d1e;"></span>Hiking</div>
+          <div class="legend-row"><span class="swatch" style="background:#6A5ACD;border-color:#453b8a;"></span>Biking</div>
+          <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #8B5A2B;"></span>Equestrian</div>
+          <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #2F6F9E;"></span>Paddling</div>
+          <div class="legend-row"><span class="swatch" style="background:#F2C200;border-color:#a88700;"></span>Florida Nat'l Scenic Trail</div>
+          <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #888780;"></span>Other / unclassified</div>
+          <div class="legend-note" style="background:#F7E8D6;color:#8A4420;padding:7px 8px;border-radius:6px;margin-top:6px"><b>Big Cypress ORV:</b> secondary trails are closed under a court settlement; only primary trails are open, and the data doesn't distinguish them. Confirm at a kiosk or the Oasis ORV Office.</div>
+          <div class="legend-note"><b>Florida:</b> 1,138 segments from FDEP Office of Greenways &amp; Trails (Feb 2026) plus NPS for Big Cypress. FDEP notes their layer is incomplete.</div>
+        </div>
+        <div id="trails-mt-legend" style="display:none">
+          <div class="legend-row"><span class="swatch" style="background:#D94F00;border-color:#8a3200;"></span>Motorized, yearlong</div>
+          <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #B8860B;"></span>Motorized, seasonal</div>
+          <div class="legend-note"><b>Montana:</b> 238 segments, 479 miles, from the Forest Service Motor Vehicle Use Map &mdash; Bitterroot and Salmon-Challis. 160 are seasonal; the remaining routes are labeled yearlong in the source. Only motorized routes are included; walk-in trails are not. "Open" means legally open, not passable.</div>
+        </div>
       </div>
 
 
+
+      <div id="roads-wrap" style="display:none">
+        <div class="hr"></div>
+        <h3>Forest roads</h3>
+        <div class="legend-row"><span class="swatch" style="background:#425E50;border-color:#fff;"></span>National Forest System road</div>
+        <div class="legend-row"><span class="swatch" style="background:transparent;border:1px dashed #B54734;"></span>Closed to motorized use</div>
+        <div class="legend-note">U.S. Forest Service National Forest System Roads for Montana Units 270 and 321. <a href="https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RoadBasic_01/MapServer" target="_blank" rel="noopener">Data service</a>. Reference snapshot, September 2026; not a live closure or passability feed. Verify current access with the managing forest.</div>
+      </div>
 
       <div id="oak-wrap" style="display:none">
         <div class="hr"></div>
@@ -2545,7 +2559,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         layers: {
           managed: managedOn, habitat: habitatOn, parcels: parcelsOn,
           fire: fireOn, panther: pantherOn, dryness: drynessOn, mtfire: mtFireOn, oak: oakOn, trails: trailsOn,
-          elk: elkOn, pins: pinsOn
+          roads: roadsOn, elk: elkOn, pins: pinsOn
         }
       }));
     } catch(e){}
@@ -3385,6 +3399,105 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     else { trailGroup.clearLayers(); map.removeLayer(trailGroup); }
   };
 
+  // ---------------- Montana roads (USFS EDW) ----------------
+  map.createPane('roadPane');
+  map.getPane('roadPane').style.zIndex = 595;
+
+  var roadGroup = L.layerGroup();
+  var roadsOn = false;
+  var roadsLoaded = false;
+  var roadCasingLayer = null;
+  var roadLayer = null;
+
+  function roadStyle(feature){
+    var p = feature.properties || {};
+    return p.closedToMotorized
+      ? { color:'#B54734', weight:2.4, opacity:0.95, dashArray:'8,5', lineCap:'round' }
+      : { color:'#425E50', weight:2.2, opacity:0.95, lineCap:'round' };
+  }
+
+  function roadPopup(p){
+    var closed = !!p.closedToMotorized;
+    var color = closed ? '#B54734' : '#425E50';
+    var label = closed ? 'Closed to motorized use' : 'National Forest System road';
+    var html = '<div class="ml-pop">' +
+      '<span class="tag" style="background:' + color + '">' + label + '</span>' +
+      '<h4>' + escapeHtml(p.n || ('Road ' + (p.id || ''))) + '</h4><table>';
+    if (p.id) html += rowHtml('Road ID', p.id);
+    if (p.status) html += rowHtml('Route status', p.status);
+    if (p.maintenance) html += rowHtml('Maintenance level', p.maintenance);
+    if (p.surface) html += rowHtml('Surface', p.surface);
+    if (p.miles !== null && p.miles !== undefined && isFinite(Number(p.miles))) {
+      html += rowHtml('Mapped length', Number(p.miles).toFixed(1) + ' mi');
+    }
+    if (p.openFor) html += rowHtml('Mapped use', p.openFor);
+    if (p.maintainer) html += rowHtml('Maintained by', p.maintainer);
+    html += '</table><div class="fire-note" style="margin-top:6px">' +
+      (closed
+        ? 'The Forest Service classifies this route as closed to motorized use. This does not mean it is closed to all users.'
+        : 'Mapped road information is not a live closure or passability feed. Check current seasonal restrictions with the managing forest.') +
+      '</div></div>';
+    return html;
+  }
+
+  function loadRoads(){
+    if (roadsLoaded) return;
+    roadsLoaded = true;
+    bumpLoading(1);
+    var waiting = true;
+    function finishLoading(){
+      if (!waiting) return;
+      waiting = false;
+      bumpLoading(-1);
+    }
+    fetch('roads/mt.json')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(fc){
+        if (!fc || !fc.features){
+          roadsLoaded = false;
+          finishLoading();
+          return;
+        }
+        roadCasingLayer = L.geoJSON(fc, {
+          pane: 'roadPane',
+          interactive: false,
+          style: { color:'#ffffff', weight:4.4, opacity:0.9, lineCap:'round' }
+        });
+        roadLayer = L.geoJSON(fc, {
+          pane: 'roadPane',
+          style: roadStyle,
+          onEachFeature: function(feature, layer){
+            layer.bindPopup(roadPopup(feature.properties || {}));
+          }
+        });
+        if (roadsOn){
+          roadCasingLayer.addTo(roadGroup);
+          roadLayer.addTo(roadGroup);
+        }
+        finishLoading();
+      })
+      .catch(function(){
+        roadsLoaded = false;
+        finishLoading();
+      });
+  }
+
+  document.getElementById('btn-roads').onclick = function(){
+    roadsOn = !roadsOn;
+    this.classList.toggle('active', roadsOn);
+    this.textContent = 'Roads: ' + (roadsOn ? 'on' : 'off');
+    document.getElementById('roads-wrap').style.display = roadsOn ? '' : 'none';
+    if (roadsOn){
+      loadRoads();
+      if (roadCasingLayer) roadCasingLayer.addTo(roadGroup);
+      if (roadLayer) roadLayer.addTo(roadGroup);
+      roadGroup.addTo(map);
+    } else {
+      roadGroup.clearLayers();
+      map.removeLayer(roadGroup);
+    }
+  };
+
   // ---------------- Montana fire perimeters (NIFC WFIGS) ----------------
   map.createPane('mtFirePane');
   map.getPane('mtFirePane').style.zIndex = 388;
@@ -3449,7 +3562,11 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
 
   function updateRegionalControls(){
     var mt = inMontana();
-    [['btn-elk','elk-wrap'],['btn-mtfire','mtfire-wrap']].forEach(function(pr){
+    var floridaTrailLegend = document.getElementById('trails-fl-legend');
+    var montanaTrailLegend = document.getElementById('trails-mt-legend');
+    if (floridaTrailLegend) floridaTrailLegend.style.display = mt ? 'none' : '';
+    if (montanaTrailLegend) montanaTrailLegend.style.display = mt ? '' : 'none';
+    [['btn-elk','elk-wrap'],['btn-mtfire','mtfire-wrap'],['btn-roads','roads-wrap']].forEach(function(pr){
       var b = document.getElementById(pr[0]);
       if (b) b.style.display = mt ? '' : 'none';
       if (!mt){
@@ -3459,6 +3576,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     });
     if (!mt && elkOn)    document.getElementById('btn-elk').click();
     if (!mt && mtFireOn) document.getElementById('btn-mtfire').click();
+    if (!mt && roadsOn)  document.getElementById('btn-roads').click();
     [['btn-panther', 'panther-wrap'],
      ['btn-oak',     'oak-wrap'],
      ['btn-dryness', 'dry-legend-wrap'],
@@ -3502,6 +3620,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
           ['dryness',  function(){ return drynessOn; }, 'btn-dryness'],
           ['elk',      function(){ return elkOn;     }, 'btn-elk'],
           ['mtfire',   function(){ return mtFireOn;  }, 'btn-mtfire'],
+          ['roads',    function(){ return roadsOn;  }, 'btn-roads'],
           ['oak',      function(){ return oakOn;     }, 'btn-oak'],
           ['trails',   function(){ return trailsOn;  }, 'btn-trails'],
           ['pins',     function(){ return pinsOn;    }, 'btn-pins']
@@ -3518,7 +3637,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     map.on('moveend zoomend', writeState);
     // every layer button also persists
     ['btn-managed','btn-habitat','btn-parcels','btn-fire','btn-panther',
-     'btn-dryness','btn-elk','btn-mtfire','btn-oak','btn-trails','btn-pins','btn-relief'].forEach(function(id){
+     'btn-dryness','btn-elk','btn-mtfire','btn-roads','btn-oak','btn-trails','btn-pins','btn-relief'].forEach(function(id){
       var b = document.getElementById(id);
       if (b) b.addEventListener('click', function(){ setTimeout(writeState, 0); });
     });
