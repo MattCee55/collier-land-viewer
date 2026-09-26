@@ -796,6 +796,7 @@ body{
   color:#4a4636;
 }
 #status b{ color:var(--ink); }
+#status:empty{ display:none; }
 #loading{
   position:absolute; z-index:1000; left:50%; top:16px; transform:translateX(-50%);
   background:var(--moss-dark); color:#fff;
@@ -855,6 +856,9 @@ body{
   font-size:11px; padding:6px 2px;
 }
 #panel{ max-height:calc(100vh - 28px); overflow-y:auto; }
+@media (max-width:640px){
+  #panel{ max-height:calc(100vh - 70px); }
+}
 #habitat-legend-wrap h3{
   display:flex; align-items:baseline; justify-content:space-between; gap:6px;
 }
@@ -983,12 +987,13 @@ body.narrow #topbar .brand{ font-size:13px; }
 .rank-date{ color:#77715c; font-size:10px; white-space:nowrap; }
 
 /* ---- Region dropdown ---- */
-#region-select{
+#region-select, #layer-preset{
   width:100%; padding:7px 8px; font-size:12.5px;
   font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
   border:1px solid var(--line); border-radius:7px;
   background:#fff; color:var(--ink); cursor:pointer;
 }
+#layer-preset{ margin-top:6px; }
 
 /* ---- Dryness ---- */
 #dry-mode{
@@ -1176,6 +1181,8 @@ textarea.pin-input{ resize:vertical; }
           <option value="mt321">Unit 321</option>
         </optgroup>
       </select>
+      <div id="zone-summary" class="legend-note" aria-live="polite"></div>
+      <button id="btn-reset-view" class="btn">Reset map view</button>
       <div class="seg" style="margin-top:6px">
         <button id="seg-imagery">Imagery</button>
         <button id="seg-topo">Topo</button>
@@ -1200,6 +1207,14 @@ textarea.pin-input{ resize:vertical; }
       <button id="btn-dryness" class="btn">Wetness: off</button>
       <button id="btn-parcels" class="btn">Parcels: off</button>
       <button id="btn-pins" class="btn active">Pins: on</button>
+      <label class="legend-note" for="layer-preset">Layer preset</label>
+      <select id="layer-preset">
+        <option value="">Choose a preset</option>
+        <option value="access">Access and routes</option>
+        <option value="habitat">Habitat</option>
+        <option value="wildlife">Wildlife context</option>
+      </select>
+      <div id="tile-status" class="legend-note" role="status" aria-live="polite">Waiting for map tile results.</div>
 
       <div id="panther-wrap" style="display:none">
         <div class="hr"></div>
@@ -1357,9 +1372,7 @@ textarea.pin-input{ resize:vertical; }
 
 </div>
 
-<div id="status">
-  <b>Heads up:</b> Florida parcels from the 2025 DOR tax roll; habitat from FWC/FNAI Cooperative Land Cover v4.0; fire from NASA FIRMS; panther tracks from FWC telemetry. Montana districts from MT FWP; parcels and public land from the Montana State Library. Reference only &mdash; not a survey.
-</div>
+<div id="status"></div>
 <script>
 /* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -1400,7 +1413,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   var CONFIG = {
     START_CENTER: [26.425, -81.700],   // Flint Pen Strand, Lee County
     START_ZOOM: 13,
-    MIN_PARCEL_ZOOM: 14,
+    MIN_PARCEL_ZOOM: 13,
     MIN_HABITAT_ZOOM: 12,
     FINE_HABITAT_ZOOM: 15   // at/above this zoom, color by specific type
   };
@@ -1412,6 +1425,27 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     mt270:     { center: [45.9631, -113.9111], zoom: 10 },
     mt321:     { center: [45.5641, -113.6165], zoom: 10 }
   };
+
+  var REGION_TILE_SOURCES = {
+    collier:   { habitat: ['collier_lee'], parcels: ['collier'] },
+    lee:       { habitat: ['collier_lee'], parcels: ['lee'] },
+    stvincent: { habitat: ['st_vincent'], parcels: [] },
+    mt270:     { habitat: ['mt'], parcels: ['mt'] },
+    mt321:     { habitat: ['mt'], parcels: ['mt'] }
+  };
+
+  function nearestRegionKey(lat, lng){
+    var bestKey = 'lee';
+    var bestDistance = Infinity;
+    Object.keys(REGIONS_VIEW).forEach(function(key){
+      var center = REGIONS_VIEW[key].center;
+      var latDelta = lat - center[0];
+      var lngDelta = (lng - center[1]) * Math.cos(lat * Math.PI / 180);
+      var distance = latDelta * latDelta + lngDelta * lngDelta;
+      if (distance < bestDistance){ bestDistance = distance; bestKey = key; }
+    });
+    return bestKey;
+  }
 
   // Field names vary by source. We scan for the first match in
   // each list rather than hard-coding one schema.
@@ -1547,6 +1581,152 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     };
   }
 
+  var floridaPublicGeometries = [];
+  var floridaPublicGeometryReady = false;
+
+  function geometryBounds(geometry){
+    if (!geometry || !geometry.coordinates) return null;
+    var bounds = [Infinity, Infinity, -Infinity, -Infinity];
+    function walk(value){
+      if (!Array.isArray(value)) return;
+      if (typeof value[0] === 'number' && typeof value[1] === 'number'){
+        bounds[0] = Math.min(bounds[0], value[0]);
+        bounds[1] = Math.min(bounds[1], value[1]);
+        bounds[2] = Math.max(bounds[2], value[0]);
+        bounds[3] = Math.max(bounds[3], value[1]);
+        return;
+      }
+      value.forEach(walk);
+    }
+    walk(geometry.coordinates);
+    return isFinite(bounds[0]) ? bounds : null;
+  }
+
+  function boundsOverlap(a, b){
+    return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+  }
+
+  function polygonParts(geometry){
+    if (!geometry) return [];
+    if (geometry.type === 'Polygon') return [geometry.coordinates];
+    if (geometry.type === 'MultiPolygon') return geometry.coordinates;
+    return [];
+  }
+
+  function pointOnSegment(point, start, end){
+    var cross = (point[0] - start[0]) * (end[1] - start[1]) -
+                (point[1] - start[1]) * (end[0] - start[0]);
+    if (Math.abs(cross) > 1e-12) return false;
+    return point[0] >= Math.min(start[0], end[0]) - 1e-10 &&
+           point[0] <= Math.max(start[0], end[0]) + 1e-10 &&
+           point[1] >= Math.min(start[1], end[1]) - 1e-10 &&
+           point[1] <= Math.max(start[1], end[1]) + 1e-10;
+  }
+
+  function ringLocation(point, ring){
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++){
+      if (pointOnSegment(point, ring[j], ring[i])) return 0;
+      var xi = ring[i][0], yi = ring[i][1];
+      var xj = ring[j][0], yj = ring[j][1];
+      if ((yi > point[1]) !== (yj > point[1]) &&
+          point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi){
+        inside = !inside;
+      }
+    }
+    return inside ? 1 : -1;
+  }
+
+  function polygonContains(point, rings){
+    if (!rings.length) return false;
+    var outer = ringLocation(point, rings[0]);
+    if (outer !== 1) return outer === 0;
+    for (var i = 1; i < rings.length; i++){
+      var hole = ringLocation(point, rings[i]);
+      if (hole === 0) return true;
+      if (hole === 1) return false;
+    }
+    return true;
+  }
+
+  function orientation(a, b, c){
+    var cross = (b[0] - a[0]) * (c[1] - a[1]) -
+                (b[1] - a[1]) * (c[0] - a[0]);
+    return Math.abs(cross) < 1e-12 ? 0 : (cross > 0 ? 1 : -1);
+  }
+
+  function segmentsIntersect(a, b, c, d){
+    var o1 = orientation(a, b, c), o2 = orientation(a, b, d);
+    var o3 = orientation(c, d, a), o4 = orientation(c, d, b);
+    if (o1 !== o2 && o3 !== o4) return true;
+    return (o1 === 0 && pointOnSegment(c, a, b)) ||
+           (o2 === 0 && pointOnSegment(d, a, b)) ||
+           (o3 === 0 && pointOnSegment(a, c, d)) ||
+           (o4 === 0 && pointOnSegment(b, c, d));
+  }
+
+  function ringsIntersect(a, b){
+    for (var i = 0; i < a.length - 1; i++){
+      for (var j = 0; j < b.length - 1; j++){
+        if (segmentsIntersect(a[i], a[i + 1], b[j], b[j + 1])) return true;
+      }
+    }
+    return false;
+  }
+
+  function polygonsIntersect(a, b){
+    if (!a.length || !b.length) return false;
+    var aBounds = geometryBounds({coordinates: a});
+    var bBounds = geometryBounds({coordinates: b});
+    if (!aBounds || !bBounds || !boundsOverlap(aBounds, bBounds)) return false;
+    for (var i = 0; i < a.length; i++){
+      for (var j = 0; j < b.length; j++){
+        if (ringsIntersect(a[i], b[j])) return true;
+      }
+    }
+    return polygonContains(a[0][0], b) || polygonContains(b[0][0], a);
+  }
+
+  function geometriesIntersect(a, b){
+    var aParts = polygonParts(a), bParts = polygonParts(b);
+    for (var i = 0; i < aParts.length; i++){
+      for (var j = 0; j < bParts.length; j++){
+        if (polygonsIntersect(aParts[i], bParts[j])) return true;
+      }
+    }
+    return false;
+  }
+
+  function hasPublicOwnerType(properties){
+    return String((properties || {}).OWNERTYPES || '').split(',').some(function(code){
+      code = code.trim().toUpperCase();
+      return code === 'S' || code === 'L' || code.indexOf('F') === 0;
+    });
+  }
+
+  function setFloridaPublicGeometries(features){
+    floridaPublicGeometries = [];
+    features.forEach(function(feature){
+      if (!hasPublicOwnerType(feature.properties) || !feature.geometry) return;
+      var bounds = geometryBounds(feature.geometry);
+      if (bounds) floridaPublicGeometries.push({geometry: feature.geometry, bounds: bounds});
+    });
+    floridaPublicGeometryReady = true;
+    if (parcelsOn) refreshTiles();
+  }
+
+  function parcelTouchesPublicLand(feature){
+    if (!feature || !feature.geometry) return false;
+    var parcelBounds = geometryBounds(feature.geometry);
+    if (!parcelBounds) return false;
+    for (var i = 0; i < floridaPublicGeometries.length; i++){
+      var publicLand = floridaPublicGeometries[i];
+      if (boundsOverlap(parcelBounds, publicLand.bounds) &&
+          geometriesIntersect(feature.geometry, publicLand.geometry)) return true;
+    }
+    return false;
+  }
+
   var _moreId = 0;
   function moreBlock(html){
     if (!html) return '';
@@ -1596,9 +1776,11 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   }
 
   var TILE_SIZE = 0.02; // must match the tiling scripts
-  var COUNTIES = ['collier', 'lee', 'mt'];
-  var HAB_REGIONS = ['collier_lee', 'st_vincent'];
   var MT_HAB_DIR = 'lctiles/mt';
+  function activeTileSources(){
+    var select = document.getElementById('region-select');
+    return REGION_TILE_SOURCES[select && select.value] || REGION_TILE_SOURCES.lee;
+  }
   var legendColors = {};
   // Broad-view palette for Montana Level 1 groups, in the spirit of the state's own colours
   var MT_L1_COLORS = {
@@ -1622,14 +1804,75 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   // Render habitat underneath parcels so parcel lines stay readable on top
   map.createPane('habitatPane');
   map.getPane('habitatPane').style.zIndex = 380;
+  var habitatRenderer = L.canvas({ pane: 'habitatPane', padding: 0.5 });
+  var parcelRenderer = L.canvas({ padding: 0.5 });
 
   var parcelGroup = L.layerGroup();
   var habGroup = L.layerGroup();
   var parcelsOn = false;
   var habitatOn = true;
   var statusEl = document.getElementById("status");
+  var tileStatusEl = document.getElementById('tile-status');
+  var tileStats = { habitat: {}, parcels: {} };
 
   function setStatus(html){ statusEl.innerHTML = html; }
+
+  function recordTileOutcome(kind, source, outcome){
+    var bySource = tileStats[kind][source] || (tileStats[kind][source] = { loaded: 0, missing: 0, failed: 0 });
+    bySource[outcome]++;
+    renderTileStatus();
+  }
+
+  function summarizeTileResults(kind, label, sources){
+    if (!sources.length) return label + ': not mapped in this zone';
+    if (kind === 'parcels' && parcelsOn && sources.indexOf('mt') !== -1 &&
+        map.getZoom() < CONFIG.MIN_PARCEL_ZOOM){
+      return label + ': zoom in to ' + CONFIG.MIN_PARCEL_ZOOM + ' to view private boundaries';
+    }
+    var totals = { loaded: 0, missing: 0, failed: 0 };
+    sources.forEach(function(source){
+      var counts = tileStats[kind][source];
+      if (!counts) return;
+      totals.loaded += counts.loaded;
+      totals.missing += counts.missing;
+      totals.failed += counts.failed;
+    });
+    var total = totals.loaded + totals.missing + totals.failed;
+    if (!total) return label + ': waiting for tile requests';
+    return label + ': ' + totals.loaded + ' loaded, ' + totals.missing + ' no tile, ' + totals.failed + ' failed';
+  }
+
+  function renderTileStatus(){
+    if (!tileStatusEl) return;
+    var sources = activeTileSources();
+    tileStatusEl.textContent = summarizeTileResults('habitat', 'Habitat', sources.habitat) +
+      ' · ' + summarizeTileResults('parcels', 'Parcels', sources.parcels);
+  }
+
+  function fetchTileJson(url, kind, source){
+    bumpLoading(1);
+    return fetch(url)
+      .then(function(response){
+        if (response.status === 404){
+          recordTileOutcome(kind, source, 'missing');
+          return null;
+        }
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json().then(function(data){
+          if (!data || !Array.isArray(data.features)) throw new Error('Invalid GeoJSON tile');
+          recordTileOutcome(kind, source, 'loaded');
+          return data;
+        });
+      })
+      .catch(function(){
+        recordTileOutcome(kind, source, 'failed');
+        return null;
+      })
+      .then(function(data){
+        bumpLoading(-1);
+        return data;
+      });
+  }
 
   function tileKeysForBounds(bounds){
     var minTx = Math.floor(bounds.getWest() / TILE_SIZE);
@@ -1705,13 +1948,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     if (habLoadedKeys[cacheKey]) return;
     habLoadedKeys[cacheKey] = true;
     var base = (region === 'mt') ? MT_HAB_DIR : ('clctiles/' + region);
-    bumpLoading(1);
-    fetch(base + '/' + tx + '_' + ty + '.json')
-      .then(function(res){
-        bumpLoading(-1);
-        if (!res.ok) return null;
-        return res.json();
-      })
+    fetchTileJson(base + '/' + tx + '_' + ty + '.json', 'habitat', region)
       .then(function(fc){
         if (!fc || !fc.features) return;
         var types = [];
@@ -1724,6 +1961,8 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         habFeatureTypes[cacheKey] = types;
         var layer = L.geoJSON(fc, {
           pane: 'habitatPane',
+          renderer: habitatRenderer,
+          smoothFactor: 1.5,
           style: styleHabitat,
           onEachFeature: function(feature, lyr){
             lyr.bindPopup(buildHabPopup(feature.properties || {}));
@@ -1734,7 +1973,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         addDrynessFromTile(cacheKey, fc);
         updateHabLegend();
       })
-      .catch(function(){ bumpLoading(-1); });
+      .catch(function(){ recordTileOutcome('habitat', region, 'failed'); });
   }
 
   function restyleHabitat(){
@@ -1766,8 +2005,9 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     var visible = {};
     var keys = tileKeysForBounds(map.getBounds());
     var wanted = {};
+    var habitatSources = activeTileSources().habitat;
     keys.forEach(function(k){
-      HAB_REGIONS.concat(['mt']).forEach(function(r){ wanted[r + ':' + k[0] + '_' + k[1]] = true; });
+      habitatSources.forEach(function(r){ wanted[r + ':' + k[0] + '_' + k[1]] = true; });
     });
     Object.keys(habFeatureTypes).forEach(function(cacheKey){
       if (!wanted[cacheKey]) return;
@@ -1798,20 +2038,26 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
 
   // ---------------- Parcel tiles ----------------
   function loadTile(county, tx, ty){
+    if (county !== 'mt' && !floridaPublicGeometryReady) return;
     var cacheKey = county + ':' + tx + '_' + ty;
     if (loadedTileKeys[cacheKey]) return;
     loadedTileKeys[cacheKey] = true;
     var url = 'tiles/' + county + '/' + tx + '_' + ty + '.json';
-    bumpLoading(1);
-    fetch(url)
-      .then(function(res){
-        bumpLoading(-1);
-        if (!res.ok) return null; // 404 = no parcels for this county in this tile, expected
-        return res.json();
-      })
+    fetchTileJson(url, 'parcels', county)
       .then(function(fc){
         if (!fc || !fc.features) return;
-        var layer = L.geoJSON(fc, {
+        var features = fc.features;
+        if (county === 'mt'){
+          features = features.filter(function(feature){
+            return !mtParcelIsPublic(feature.properties || {});
+          });
+        } else {
+          features = features.filter(parcelTouchesPublicLand);
+        }
+        if (!features.length) return;
+        var layer = L.geoJSON({type:'FeatureCollection', features:features}, {
+          renderer: parcelRenderer,
+          smoothFactor: 1.2,
           style: function(feature){
             var p = feature.properties || {};
             if (isMtParcel(p)){
@@ -1829,21 +2075,24 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         tileLayers[cacheKey] = layer;
         if (parcelsOn) layer.addTo(parcelGroup);
       })
-      .catch(function(){ bumpLoading(-1); });
+      .catch(function(){ recordTileOutcome('parcels', county, 'failed'); });
   }
 
   function refreshTiles(){
+    if (!stateReady) return;
+    renderTileStatus();
     var keys = tileKeysForBounds(map.getBounds());
     if (keys.length > 80) return; // zoomed too far out to load tile-by-tile
+    var sources = activeTileSources();
 
     if ((habitatOn || drynessOn) && map.getZoom() >= CONFIG.MIN_HABITAT_ZOOM){
       keys.forEach(function(k){
-        HAB_REGIONS.concat(['mt']).forEach(function(r){ loadHabTile(r, k[0], k[1]); });
+        sources.habitat.forEach(function(r){ loadHabTile(r, k[0], k[1]); });
       });
     }
     if (parcelsOn && map.getZoom() >= CONFIG.MIN_PARCEL_ZOOM){
       keys.forEach(function(k){
-        COUNTIES.forEach(function(county){ loadTile(county, k[0], k[1]); });
+        sources.parcels.forEach(function(county){ loadTile(county, k[0], k[1]); });
       });
     }
     updateHabLegend();
@@ -1861,7 +2110,13 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     refreshTiles();
   });
   lastFine = useFineColors();
-  refreshTiles();
+
+  function zoomToParcelScale(){
+    var sources = activeTileSources().parcels;
+    if (!parcelsOn || sources.indexOf('mt') === -1 || map.getZoom() >= CONFIG.MIN_PARCEL_ZOOM) return false;
+    map.setZoom(CONFIG.MIN_PARCEL_ZOOM);
+    return true;
+  }
 
   document.getElementById("btn-parcels").onclick = function(){
     parcelsOn = !parcelsOn;
@@ -1869,10 +2124,11 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     this.textContent = "Parcels: " + (parcelsOn ? "on" : "off");
     if (parcelsOn){
       Object.keys(tileLayers).forEach(function(k){ tileLayers[k].addTo(parcelGroup); });
-      refreshTiles();
+      if (!zoomToParcelScale()) refreshTiles();
     } else {
       parcelGroup.clearLayers();
     }
+    renderTileStatus();
   };
 
   document.getElementById("btn-habitat").onclick = function(){
@@ -1894,11 +2150,25 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   // before the Montana data is in place.
   var regionSelect = document.getElementById('region-select');
   var mtDistrictBounds = {}; // "270" -> L.LatLngBounds, filled by the MT district layer
+  var zoneSummaryEl = document.getElementById('zone-summary');
+  var ZONE_SUMMARIES = {
+    collier: '<b>Big Cypress · Collier County</b><br>FWC/FNAI habitat v4.0 · 2025 Florida parcel roll. ORV routes are reference lines, not permission to ride; permits and designated routes apply. <a href="https://www.nps.gov/bicy/planyourvisit/orv-use.htm" target="_blank" rel="noopener">NPS ORV rules and maps</a> · <a href="https://www.nps.gov/bicy/planyourvisit/conditions.htm" target="_blank" rel="noopener">current alerts</a>.',
+    lee: '<b>Flint Pen Strand · Lee County</b><br>FWC/FNAI habitat v4.0 · 2025 Florida parcel roll. Panther layer: 20 animals and 162 selected fixes through Feb 2026; sparse aerial rest-site fixes, not routes traveled. <a href="https://geodata.myfwc.com/datasets/myfwc::florida-panther-telemetry/about" target="_blank" rel="noopener">FWC telemetry metadata</a>.',
+    stvincent: '<b>St. Vincent National Wildlife Refuge</b><br>The island is boat-access only, open in daylight, and may close during hunts, fires, or tropical storms. No parcel layer is available here. <a href="https://www.fws.gov/refuge/st-vincent/visit-us" target="_blank" rel="noopener">Official refuge access and notices</a>.',
+    mt270: '<b>Montana HD 270</b><br>Elk winter range covers about 55%; 8% burned since 2020. Roads are a September 2026 reference snapshot, not live closures or passability. <a href="https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RoadBasic_01/MapServer" target="_blank" rel="noopener">USFS road service</a> · <a href="https://gis-mtfwp.hub.arcgis.com/maps/14973cd952c04f779e254963a4b3b72d" target="_blank" rel="noopener">current FWP access maps</a>.',
+    mt321: '<b>Montana HD 321</b><br>Elk winter range covers about 5%; 12% burned since 2020. Roads are a September 2026 reference snapshot, not live closures or passability. <a href="https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RoadBasic_01/MapServer" target="_blank" rel="noopener">USFS road service</a> · <a href="https://gis-mtfwp.hub.arcgis.com/maps/14973cd952c04f779e254963a4b3b72d" target="_blank" rel="noopener">current FWP access maps</a>.'
+  };
 
-  function goToRegion(key){
+  function updateZoneSummary(key){
+    if (zoneSummaryEl) zoneSummaryEl.innerHTML = ZONE_SUMMARIES[key] || '';
+  }
+
+  function goToRegion(key, keepParcels){
     var isMt = (key === 'mt270' || key === 'mt321');
-    setBasemap(isMt ? 'topo' : 'streets');
-    if (parcelsOn) document.getElementById('btn-parcels').click();  // parcels off by default
+    updateZoneSummary(key);
+    renderTileStatus();
+    setBasemap(isMt ? 'imagery' : 'streets');
+    if (parcelsOn && !keepParcels) document.getElementById('btn-parcels').click();
     if (isMt){
       var hd = key.slice(2);
       if (mtDistrictBounds[hd]){
@@ -1911,9 +2181,15 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   }
 
   regionSelect.addEventListener('change', function(){
+    document.getElementById('layer-preset').value = '';
     goToRegion(this.value);
     if (isSmallScreen()) setPanelOpen(false);
   });
+  document.getElementById('btn-reset-view').addEventListener('click', function(){
+    goToRegion(regionSelect.value, true);
+  });
+  updateZoneSummary(regionSelect.value);
+  renderTileStatus();
 
   // ---------------- Basemap toggle ----------------
   var segImagery = document.getElementById("seg-imagery");
@@ -2044,7 +2320,11 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
           return res.json();
         })
         .then(function(fc){
-          if (!fc || !fc.features) return;
+          if (!fc || !fc.features){
+            if (region === 'collier_lee') setFloridaPublicGeometries([]);
+            return;
+          }
+          if (region === 'collier_lee') setFloridaPublicGeometries(fc.features);
           fc.features.forEach(function(f){
             if (f.properties) allManagedProps.push(f.properties);
           });
@@ -2057,7 +2337,10 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
           }).addTo(managedGroup);
           renderFireRank();
         })
-        .catch(function(){ bumpLoading(-1); });
+        .catch(function(){
+          bumpLoading(-1);
+          if (region === 'collier_lee') setFloridaPublicGeometries([]);
+        });
     });
   }
 
@@ -2554,6 +2837,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       localStorage.setItem(STATE_KEY, JSON.stringify({
         v: STATE_VERSION,
         lat: +c.lat.toFixed(5), lng: +c.lng.toFixed(5), z: map.getZoom(),
+        region: regionSelect.value,
         base: currentBasemap,
         relief: reliefOn,
         layers: {
@@ -3153,6 +3437,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   function shareUrlFor(lat, lng, zoom, label){
     var base = location.origin + location.pathname;
     var h = '#at=' + lat.toFixed(5) + ',' + lng.toFixed(5) + ',' + (zoom || map.getZoom());
+    h += '&r=' + encodeURIComponent(regionSelect.value);
     if (label) h += '&n=' + encodeURIComponent(label);
     return base + h;
   }
@@ -3188,6 +3473,9 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     var a = parts.at.split(',');
     var lat = parseFloat(a[0]), lng = parseFloat(a[1]), z = parseInt(a[2], 10) || 15;
     if (isNaN(lat) || isNaN(lng)) return;
+    regionSelect.value = REGION_TILE_SOURCES[parts.r] ? parts.r : nearestRegionKey(lat, lng);
+    updateZoneSummary(regionSelect.value);
+    renderTileStatus();
     map.setView([lat, lng], z);
     L.marker([lat, lng]).addTo(map)
       .bindPopup('<div class="hab-pop"><h4>' + escapeHtml(parts.n || 'Shared location') + '</h4>' +
@@ -3562,10 +3850,17 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
 
   function updateRegionalControls(){
     var mt = inMontana();
+    var stVincent = regionSelect.value === 'stvincent';
     var floridaTrailLegend = document.getElementById('trails-fl-legend');
     var montanaTrailLegend = document.getElementById('trails-mt-legend');
     if (floridaTrailLegend) floridaTrailLegend.style.display = mt ? 'none' : '';
     if (montanaTrailLegend) montanaTrailLegend.style.display = mt ? '' : 'none';
+    var parcelButton = document.getElementById('btn-parcels');
+    if (parcelButton){
+      parcelButton.disabled = stVincent;
+      parcelButton.title = stVincent ? 'No parcel layer is available for St. Vincent Island.' : '';
+      if (stVincent && parcelsOn) parcelButton.click();
+    }
     [['btn-elk','elk-wrap'],['btn-mtfire','mtfire-wrap'],['btn-roads','roads-wrap']].forEach(function(pr){
       var b = document.getElementById(pr[0]);
       if (b) b.style.display = mt ? '' : 'none';
@@ -3577,13 +3872,20 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     if (!mt && elkOn)    document.getElementById('btn-elk').click();
     if (!mt && mtFireOn) document.getElementById('btn-mtfire').click();
     if (!mt && roadsOn)  document.getElementById('btn-roads').click();
-    [['btn-panther', 'panther-wrap'],
-     ['btn-oak',     'oak-wrap'],
-     ['btn-dryness', 'dry-legend-wrap'],
-     ['btn-fire',    'fire-legend-wrap']].forEach(function(pair){
-      var btn = document.getElementById(pair[0]);
-      if (btn) btn.style.display = mt ? 'none' : '';
-    });
+    var pantherButton = document.getElementById('btn-panther');
+    var oakButton = document.getElementById('btn-oak');
+    var drynessButton = document.getElementById('btn-dryness');
+    var fireButton = document.getElementById('btn-fire');
+    if (pantherButton) pantherButton.style.display = (mt || stVincent) ? 'none' : '';
+    if (oakButton) oakButton.style.display = (mt || stVincent) ? 'none' : '';
+    if (drynessButton) drynessButton.style.display = mt ? 'none' : '';
+    if (fireButton) fireButton.style.display = mt ? 'none' : '';
+    if (stVincent){
+      if (pantherOn) pantherButton.click();
+      if (oakOn) oakButton.click();
+      document.getElementById('panther-wrap').style.display = 'none';
+      document.getElementById('oak-wrap').style.display = 'none';
+    }
     if (mt){
       // collapse any Florida-only layer that was left on
       if (pantherOn) document.getElementById('btn-panther').click();
@@ -3595,7 +3897,51 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         if (el) el.style.display = 'none';
       });
     }
+    updateZoneSummary(regionSelect.value);
+    renderTileStatus();
   }
+
+  function applyLayerPreset(preset){
+    var mt = regionSelect.value === 'mt270' || regionSelect.value === 'mt321';
+    var stVincent = regionSelect.value === 'stvincent';
+    var access = preset === 'access';
+    var habitat = preset === 'habitat';
+    var wildlife = preset === 'wildlife';
+    var targets = {
+      managed: access,
+      habitat: habitat,
+      parcels: false,
+      fire: wildlife && !mt,
+      panther: wildlife && !mt && !stVincent,
+      dryness: false,
+      elk: wildlife && mt,
+      mtfire: wildlife && mt,
+      roads: access && mt,
+      oak: false,
+      trails: access
+    };
+    var current = {
+      managed: managedOn, habitat: habitatOn, parcels: parcelsOn,
+      fire: fireOn, panther: pantherOn, dryness: drynessOn,
+      elk: elkOn, mtfire: mtFireOn, roads: roadsOn, oak: oakOn, trails: trailsOn
+    };
+    var buttonIds = {
+      managed: 'btn-managed', habitat: 'btn-habitat', parcels: 'btn-parcels',
+      fire: 'btn-fire', panther: 'btn-panther', dryness: 'btn-dryness',
+      elk: 'btn-elk', mtfire: 'btn-mtfire', roads: 'btn-roads',
+      oak: 'btn-oak', trails: 'btn-trails'
+    };
+    Object.keys(targets).forEach(function(layerName){
+      var button = document.getElementById(buttonIds[layerName]);
+      if (button && current[layerName] !== targets[layerName]) button.click();
+    });
+  }
+
+  document.getElementById('layer-preset').addEventListener('change', function(){
+    if (!this.value) return;
+    applyLayerPreset(this.value);
+    this.value = '';
+  });
 
   map.on('moveend', function(){
     if (trailsOn && trailsLoadedFor && trailsLoadedFor !== (inMontana() ? 'mt' : 'fl')) loadTrails();
@@ -3607,6 +3953,11 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   (function restore(){
     if (savedState && !location.hash){
       try {
+        if (REGION_TILE_SOURCES[savedState.region]) regionSelect.value = savedState.region;
+        else if (typeof savedState.lat === 'number' && typeof savedState.lng === 'number')
+          regionSelect.value = nearestRegionKey(savedState.lat, savedState.lng);
+        updateZoneSummary(regionSelect.value);
+        renderTileStatus();
         map.setView([savedState.lat, savedState.lng], savedState.z);
         if (savedState.base && BASEMAPS[savedState.base]) setBasemap(savedState.base);
         if (savedState.relief && !reliefOn) document.getElementById('btn-relief').click();
@@ -3641,6 +3992,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       var b = document.getElementById(id);
       if (b) b.addEventListener('click', function(){ setTimeout(writeState, 0); });
     });
+    refreshTiles();
   })();
 
   // ---------------- Collapsible panel sections ----------------
