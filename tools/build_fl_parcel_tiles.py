@@ -409,6 +409,7 @@ def is_fl_public_parcel(properties):
     if owner == " USA ":
         return True
     if any(term in owner for term in (
+        " NATIONAL AUDUBON SOCIETY INC ",
         " SOUTH FL WATER MGMT DIST ",
         " SOUTH FLORIDA WATER MANAGEMENT DISTRICT ",
     )):
