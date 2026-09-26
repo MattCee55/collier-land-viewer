@@ -1495,6 +1495,8 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     var value = ' ' + values.join(' ').toUpperCase()
       .replace(/[^A-Z0-9]+/g, ' ').trim() + ' ';
     if (ownerValue === ' USA ') return true;
+    if (ownerValue.indexOf(' SOUTH FL WATER MGMT DIST ') !== -1 ||
+        ownerValue.indexOf(' SOUTH FLORIDA WATER MANAGEMENT DISTRICT ') !== -1) return true;
     var federalAgencies = ['NATIONAL PARK SERVICE', 'NATIONAL PARKS SERVICE',
       'US DEPARTMENT OF', 'U S DEPARTMENT OF', 'US DEPT OF', 'U S DEPT OF',
       'US FISH AND WILDLIFE', 'U S FISH AND WILDLIFE', 'ARMY CORPS OF ENGINEERS',

@@ -408,6 +408,11 @@ def is_fl_public_parcel(properties):
     combined = normalize(owners + addresses)
     if owner == " USA ":
         return True
+    if any(term in owner for term in (
+        " SOUTH FL WATER MGMT DIST ",
+        " SOUTH FLORIDA WATER MANAGEMENT DISTRICT ",
+    )):
+        return True
 
     public_terms = (
         "TITF",

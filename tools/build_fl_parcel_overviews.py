@@ -90,6 +90,11 @@ def is_florida_public_parcel(properties):
     normalized = normalize_owner(owner_values + other_values)
     if owner == " USA ":
         return True
+    if any(term in owner for term in (
+        " SOUTH FL WATER MGMT DIST ",
+        " SOUTH FLORIDA WATER MANAGEMENT DISTRICT ",
+    )):
+        return True
     federal_agencies = (
         " NATIONAL PARK SERVICE ",
         " NATIONAL PARKS SERVICE ",
