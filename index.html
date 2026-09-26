@@ -1414,6 +1414,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     START_CENTER: [26.425, -81.700],   // Flint Pen Strand, Lee County
     START_ZOOM: 13,
     MIN_PARCEL_ZOOM: 13,
+    MT_PARCEL_OVERVIEW_ZOOM: 12,
     MIN_HABITAT_ZOOM: 12,
     FINE_HABITAT_ZOOM: 15   // at/above this zoom, color by specific type
   };
@@ -1533,10 +1534,13 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   function isMtParcel(p){ return p && p.HD !== undefined; }
 
   function mtParcelIsPublic(p){
-    var n = (p.OwnerName || '').toUpperCase();
-    return ['USA','UNITED STATES','FOREST SERVICE','STATE OF MONTANA','BUREAU OF',
-            'MONTANA DEPT','MONTANA STATE','COUNTY OF','DNRC','FISH WILDLIFE',
-            'SCHOOL DIST','CITY OF','TOWN OF'].some(function(k){ return n.indexOf(k) !== -1; });
+    var n = String((p && p.OwnerName) || '').toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ').trim();
+    if (/(^| )USA( |$)/.test(n) || /(^| )U S A( |$)/.test(n) || /\bCOUNTY$/.test(n)) return true;
+    return ['UNITED STATES','FOREST SERVICE','STATE OF MONTANA','BUREAU OF',
+            'MONTANA DEPT','MONTANA DEPARTMENT','MONTANA STATE','COUNTY OF',
+            'DNRC','FISH WILDLIFE','SCHOOL DIST','CITY OF','TOWN OF',
+            'NATIONAL PARK SERVICE'].some(function(k){ return n.indexOf(k) !== -1; });
   }
 
   function buildMtParcelPopup(p){
@@ -1808,6 +1812,12 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   var parcelRenderer = L.canvas({ padding: 0.5 });
 
   var parcelGroup = L.layerGroup();
+  var parcelOverviewGroup = L.layerGroup();
+  var mtParcelOverviewLayers = {};
+  var mtParcelOverviewData = null;
+  var mtParcelOverviewRequest = null;
+  var mtParcelOverviewFailed = false;
+  var mtParcelOverviewRetryDelay = 1000;
   var habGroup = L.layerGroup();
   var parcelsOn = false;
   var habitatOn = true;
@@ -1823,8 +1833,93 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     renderTileStatus();
   }
 
+  function activeMtDistrictId(){
+    var select = document.getElementById('region-select');
+    return select && select.value === 'mt270' ? '270' :
+           select && select.value === 'mt321' ? '321' : null;
+  }
+
+  function addMtParcelOverviewLayer(hd){
+    if (!mtParcelOverviewData) return;
+    if (!mtParcelOverviewLayers[hd]){
+      var feature = mtParcelOverviewData.features.filter(function(item){
+        return String((item.properties || {}).HD) === hd;
+      })[0];
+      if (!feature) return;
+      mtParcelOverviewLayers[hd] = L.geoJSON(feature, {
+        style: { color: '#a85f2c', weight: 1.1, opacity: 0.9,
+                 fillColor: '#e8a06a', fillOpacity: 0.72 }
+      });
+    }
+    if (parcelsOn && activeMtDistrictId() === hd &&
+        map.getZoom() <= CONFIG.MT_PARCEL_OVERVIEW_ZOOM){
+      mtParcelOverviewLayers[hd].addTo(parcelOverviewGroup);
+    }
+  }
+
+  function scheduleMtParcelOverviewRetry(){
+    var delay = mtParcelOverviewRetryDelay;
+    mtParcelOverviewRetryDelay = Math.min(mtParcelOverviewRetryDelay * 2, 30000);
+    window.setTimeout(function(){
+      if (!mtParcelOverviewFailed) return;
+      mtParcelOverviewFailed = false;
+      if (parcelsOn && activeMtDistrictId() &&
+          map.getZoom() <= CONFIG.MT_PARCEL_OVERVIEW_ZOOM){
+        updateParcelPresentation();
+      } else {
+        renderTileStatus();
+      }
+    }, delay);
+  }
+
+  function updateParcelPresentation(){
+    var hd = activeMtDistrictId();
+    var showOverview = parcelsOn && hd &&
+      map.getZoom() <= CONFIG.MT_PARCEL_OVERVIEW_ZOOM;
+    parcelOverviewGroup.clearLayers();
+    if (!showOverview) return;
+    parcelGroup.clearLayers();
+    if (mtParcelOverviewData){
+      addMtParcelOverviewLayer(hd);
+      return;
+    }
+    if (mtParcelOverviewFailed) return;
+    if (!mtParcelOverviewRequest){
+      bumpLoading(1);
+      mtParcelOverviewRequest = fetch('mt/parcel_overviews.json')
+        .then(function(response){
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        })
+        .then(function(data){
+          if (!data || !Array.isArray(data.features)) throw new Error('Invalid parcel overview');
+          mtParcelOverviewData = data;
+          mtParcelOverviewRetryDelay = 1000;
+          return data;
+        })
+        .catch(function(){
+          mtParcelOverviewFailed = true;
+          scheduleMtParcelOverviewRetry();
+          return null;
+        })
+        .then(function(data){
+          mtParcelOverviewRequest = null;
+          bumpLoading(-1);
+          renderTileStatus();
+          return data;
+        });
+    }
+    mtParcelOverviewRequest.then(function(){ addMtParcelOverviewLayer(hd); });
+    renderTileStatus();
+  }
+
   function summarizeTileResults(kind, label, sources){
     if (!sources.length) return label + ': not mapped in this zone';
+    if (kind === 'parcels' && parcelsOn && sources.indexOf('mt') !== -1 &&
+        map.getZoom() <= CONFIG.MT_PARCEL_OVERVIEW_ZOOM){
+      if (mtParcelOverviewFailed) return label + ': merged overview unavailable';
+      return label + (mtParcelOverviewData ? ': merged private-land overview' : ': loading merged private-land overview');
+    }
     if (kind === 'parcels' && parcelsOn && sources.indexOf('mt') !== -1 &&
         map.getZoom() < CONFIG.MIN_PARCEL_ZOOM){
       return label + ': zoom in to ' + CONFIG.MIN_PARCEL_ZOOM + ' to view private boundaries';
@@ -2040,7 +2135,13 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   function loadTile(county, tx, ty){
     if (county !== 'mt' && !floridaPublicGeometryReady) return;
     var cacheKey = county + ':' + tx + '_' + ty;
-    if (loadedTileKeys[cacheKey]) return;
+    if (loadedTileKeys[cacheKey]){
+      if (parcelsOn && tileLayers[cacheKey] &&
+          (county !== 'mt' || map.getZoom() > CONFIG.MT_PARCEL_OVERVIEW_ZOOM)){
+        tileLayers[cacheKey].addTo(parcelGroup);
+      }
+      return;
+    }
     loadedTileKeys[cacheKey] = true;
     var url = 'tiles/' + county + '/' + tx + '_' + ty + '.json';
     fetchTileJson(url, 'parcels', county)
@@ -2073,7 +2174,10 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
           }
         });
         tileLayers[cacheKey] = layer;
-        if (parcelsOn) layer.addTo(parcelGroup);
+        if (parcelsOn &&
+            (county !== 'mt' || map.getZoom() > CONFIG.MT_PARCEL_OVERVIEW_ZOOM)){
+          layer.addTo(parcelGroup);
+        }
       })
       .catch(function(){ recordTileOutcome('parcels', county, 'failed'); });
   }
@@ -2081,6 +2185,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   function refreshTiles(){
     if (!stateReady) return;
     renderTileStatus();
+    updateParcelPresentation();
     var keys = tileKeysForBounds(map.getBounds());
     if (keys.length > 80) return; // zoomed too far out to load tile-by-tile
     var sources = activeTileSources();
@@ -2100,6 +2205,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
 
   habGroup.addTo(map);
   parcelGroup.addTo(map);
+  parcelOverviewGroup.addTo(map);
 
   var lastFine = null;
   map.on('moveend', refreshTiles);
@@ -2113,7 +2219,9 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
 
   function zoomToParcelScale(){
     var sources = activeTileSources().parcels;
-    if (!parcelsOn || sources.indexOf('mt') === -1 || map.getZoom() >= CONFIG.MIN_PARCEL_ZOOM) return false;
+    if (!parcelsOn || sources.indexOf('mt') === -1 ||
+        map.getZoom() <= CONFIG.MT_PARCEL_OVERVIEW_ZOOM ||
+        map.getZoom() >= CONFIG.MIN_PARCEL_ZOOM) return false;
     map.setZoom(CONFIG.MIN_PARCEL_ZOOM);
     return true;
   }
@@ -2127,6 +2235,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       if (!zoomToParcelScale()) refreshTiles();
     } else {
       parcelGroup.clearLayers();
+      parcelOverviewGroup.clearLayers();
     }
     renderTileStatus();
   };
