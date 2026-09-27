@@ -1475,13 +1475,6 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     " LLP"," LP"," LTD"," LIMITED"," COMPANY"," ASSOCIATES"," ASSOCIATION"
   ];
 
-  var GOV_KEYWORDS = [
-    "STATE OF FLORIDA","UNITED STATES","U S A","USA","U.S.A","COUNTY","CITY OF",
-    "TOWN OF","SCHOOL BOARD","SCHOOL DISTRICT","WATER MANAGEMENT","CONSERVANCY",
-    "CONSERVATION","BOARD OF COUNTY","DEPT OF","DEPARTMENT OF","MUNICIPAL",
-    "HOUSING AUTHORITY","FL DEPT","FDOT","DOT ","AIRPORT AUTHORITY","DISTRICT SCHOOL"
-  ];
-
   function firstField(props, list){
     for (var i=0;i<list.length;i++){
       if (props[list[i]] !== undefined && props[list[i]] !== null && String(props[list[i]]).trim() !== ""){
@@ -1489,16 +1482,6 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       }
     }
     return null;
-  }
-
-  function isPublic(props){
-    var owner = firstField(props, OWNER_FIELDS);
-    if (!owner) return false;
-    var v = String(owner.value).toUpperCase();
-    for (var i=0;i<GOV_KEYWORDS.length;i++){
-      if (v.indexOf(GOV_KEYWORDS[i]) !== -1) return true;
-    }
-    return false;
   }
 
   function isFloridaPublicParcel(props){
@@ -1528,6 +1511,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     var value = ' ' + values.join(' ').toUpperCase()
       .replace(/[^A-Z0-9]+/g, ' ').trim() + ' ';
     if (ownerValue === ' USA ') return true;
+    if (ownerValue === ' SOUTH FLORIDA WATER MANAGEMENT ') return true;
     if (ownerValue.indexOf(' NATIONAL AUDUBON SOCIETY INC ') !== -1 ||
       ownerValue.indexOf(' SOUTH FL WATER MGMT DIST ') !== -1 ||
         ownerValue.indexOf(' SOUTH FLORIDA WATER MANAGEMENT DISTRICT ') !== -1) return true;
@@ -1655,7 +1639,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   }
 
   function styleParcel(feature){
-    var pub = isPublic(feature.properties || {});
+    var pub = isFloridaPublicParcel(feature.properties || {});
     return {
       color: pub ? "#2f6b40" : "#a85f2c",
       weight: 1.4,
@@ -1685,7 +1669,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   }
 
   function buildPopup(props){
-    var pub = isPublic(props);
+    var pub = isFloridaPublicParcel(props);
     var owner = firstField(props, OWNER_FIELDS);
     var addr1 = firstField(props, ADDR_FIELDS);
     var city  = firstField(props, CITY_FIELDS);
@@ -1982,17 +1966,15 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json().then(function(data){
           if (!data || !Array.isArray(data.features)) throw new Error('Invalid GeoJSON tile');
-          recordTileOutcome(kind, source, 'loaded');
           return data;
         });
-      })
-      .catch(function(){
-        recordTileOutcome(kind, source, 'failed');
-        return null;
       })
       .then(function(data){
         bumpLoading(-1);
         return data;
+      }, function(error){
+        bumpLoading(-1);
+        throw error;
       });
   }
 
@@ -2094,8 +2076,12 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         if (habitatOn) layer.addTo(habGroup);
         addDrynessFromTile(cacheKey, fc);
         updateHabLegend();
+        recordTileOutcome('habitat', region, 'loaded');
       })
-      .catch(function(){ recordTileOutcome('habitat', region, 'failed'); });
+      .catch(function(){
+        delete habLoadedKeys[cacheKey];
+        recordTileOutcome('habitat', region, 'failed');
+      });
   }
 
   function restyleHabitat(){
@@ -2212,8 +2198,12 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         if (parcelsOn && parcelDetailsVisible(county)){
           layer.addTo(parcelGroup);
         }
+        recordTileOutcome('parcels', county, 'loaded');
       })
-      .catch(function(){ recordTileOutcome('parcels', county, 'failed'); });
+      .catch(function(){
+        delete loadedTileKeys[cacheKey];
+        recordTileOutcome('parcels', county, 'failed');
+      });
   }
 
   function refreshTiles(){
@@ -2265,7 +2255,6 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     this.classList.toggle("active", parcelsOn);
     this.textContent = "Parcels: " + (parcelsOn ? "on" : "off");
     if (parcelsOn){
-      Object.keys(tileLayers).forEach(function(k){ tileLayers[k].addTo(parcelGroup); });
       if (!zoomToParcelScale()) refreshTiles();
     } else {
       parcelGroup.clearLayers();
@@ -3130,7 +3119,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       } else {
         var o = firstField(p, OWNER_FIELDS);
         if (o) ctx.owner = String(o.value);
-        ctx.access = isPublic(p) ? 'public' : 'private';
+        ctx.access = isFloridaPublicParcel(p) ? 'public' : 'private';
       }
     }
     // habitat

@@ -53,15 +53,19 @@ def load_managed_geometries(path):
     geometries = {county: [] for county in COUNTIES}
     for feature in collection.get("features", []):
         properties = feature.get("properties") or {}
-        county = str(properties.get("COUNTY") or "").casefold()
-        if county not in geometries:
+        feature_counties = {
+            value.strip().casefold()
+            for value in str(properties.get("COUNTY") or "").split(",")
+        }
+        matching_counties = feature_counties.intersection(geometries)
+        if not matching_counties:
             continue
         geometry_data = feature.get("geometry")
         if not geometry_data:
             raise ValueError("Managed-land feature is missing geometry")
-        geometries[county].append(
-            valid_polygonal(shape(geometry_data), county + " managed land")
-        )
+        geometry = valid_polygonal(shape(geometry_data), "managed land")
+        for county in matching_counties:
+            geometries[county].append(geometry)
 
     result = {}
     for county, items in geometries.items():

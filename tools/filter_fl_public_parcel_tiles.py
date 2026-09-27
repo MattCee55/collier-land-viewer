@@ -92,6 +92,7 @@ def gather_filter_plan(
     managed_geometries,
     prepared_managed_geometries,
     counties,
+    clip_managed=True,
 ):
     parcel_ids = {county: set() for county in counties}
     public_copies = {county: 0 for county in counties}
@@ -135,11 +136,15 @@ def gather_filter_plan(
                     continue
 
                 valid_ids[county].add(source_id)
-                private_geometry = clip_parcel_geometry(
-                    geometry,
-                    managed_geometries[county],
-                    prepared_managed_geometries[county],
-                    county + " private parcel " + source_id,
+                private_geometry = (
+                    clip_parcel_geometry(
+                        geometry,
+                        managed_geometries[county],
+                        prepared_managed_geometries[county],
+                        county + " private parcel " + source_id,
+                    )
+                    if clip_managed
+                    else geometry
                 )
                 if private_geometry is None:
                     private_status[county].setdefault(source_id, False)
@@ -172,14 +177,23 @@ def gather_filter_plan(
         counts[county]["near_unique"] = sum(private_status[county].values())
 
     for county in counties:
+        if public_buffers is None:
+            parcel_summary = "{:,} private parcels; proximity filtering disabled".format(
+                len(private_status[county])
+            )
+        else:
+            parcel_summary = (
+                "{:,} of {:,} unique private parcels intersect the buffer".format(
+                    counts[county]["near_unique"],
+                    len(private_status[county]),
+                )
+            )
         print(
-            "{}: found {:,} public parcels across {:,} tile copies; "
-            "{:,} of {:,} unique private parcels intersect the buffer".format(
+            "{}: found {:,} public parcels across {:,} tile copies; {}".format(
                 county,
                 len(parcel_ids[county]),
                 public_copies[county],
-                counts[county]["near_unique"],
-                len(private_status[county]),
+                parcel_summary,
             ),
             flush=True,
         )
@@ -231,6 +245,7 @@ def build_filtered_overview(
     managed_removed_ids,
     distance_miles,
     counties,
+    clip_managed=True,
 ):
     features = []
     for county in counties:
@@ -240,13 +255,16 @@ def build_filtered_overview(
             retained_parcel_geometries[county],
             simplify_tolerance=OVERVIEW_SIMPLIFY_TOLERANCE,
         )
-        outline = valid_polygonal(
-            difference(outline, managed_geometries[county]),
-            county + " managed-land subtraction from overview",
-        )
+        if clip_managed:
+            outline = valid_polygonal(
+                difference(outline, managed_geometries[county]),
+                county + " managed-land subtraction from overview",
+            )
+        else:
+            outline = valid_polygonal(outline, county + " private parcel overview")
         managed_overlap = intersection(outline, managed_geometries[county]).area
         threshold = max(OVERLAP_AREA_TOLERANCE, outline.area * 1e-12)
-        if managed_overlap > threshold:
+        if clip_managed and managed_overlap > threshold:
             raise ValueError(
                 "{} private overview overlaps managed lands ({:.12g})".format(
                     county, managed_overlap
@@ -274,7 +292,11 @@ def build_filtered_overview(
             "kind": (
                 "parcel-union-near-state-federal-land-minus-managed"
                 if distance_miles is not None
-                else "parcel-union-minus-managed"
+                else (
+                    "parcel-union-minus-managed"
+                    if clip_managed
+                    else "private-parcel-union"
+                )
             ),
         }
         if distance_miles is not None:
@@ -311,6 +333,7 @@ def filter_tiles(
     prepared_managed_geometries,
     counties,
     write_tiles,
+    clip_managed=True,
 ):
     removed_copies = {
         county: {"public": 0, "distance": 0, "managed": 0, "clipped": 0, "invalid": 0}
@@ -377,11 +400,15 @@ def filter_tiles(
                     tile_changed = True
                     continue
 
-                clipped_geometry = clip_parcel_geometry(
-                    geometry,
-                    managed_geometries[county],
-                    prepared_managed_geometries[county],
-                    county + " private parcel " + source_id,
+                clipped_geometry = (
+                    clip_parcel_geometry(
+                        geometry,
+                        managed_geometries[county],
+                        prepared_managed_geometries[county],
+                        county + " private parcel " + source_id,
+                    )
+                    if clip_managed
+                    else geometry
                 )
                 if clipped_geometry is None:
                     removed_copies[county]["managed"] += 1
@@ -477,7 +504,7 @@ def main():
     parser.add_argument(
         "--all-private",
         action="store_true",
-        help="retain all nonpublic parcels without proximity filtering",
+        help="retain all valid nonpublic parcels and full geometry without proximity or managed clipping",
     )
     parser.add_argument(
         "--check",
@@ -531,6 +558,7 @@ def main():
         managed_clip_geometries,
         prepared_managed_geometries,
         counties,
+        clip_managed=not args.all_private,
     )
     (
         tile_copies,
@@ -551,6 +579,7 @@ def main():
         prepared_managed_geometries,
         counties,
         write_tiles=not args.check,
+        clip_managed=not args.all_private,
     )
     for county in counties:
         if tile_ids[county]["public"] != parcel_ids[county]:
@@ -625,6 +654,7 @@ def main():
         managed_removed_ids,
         distance_miles,
         counties,
+        clip_managed=not args.all_private,
     )
 
     if args.check:
@@ -632,8 +662,11 @@ def main():
         return 0
 
     write_atomic(args.overview, overview_contents)
-    if distance_miles is None:
-        print("Updated public-parcel exclusions and managed-land clipping", flush=True)
+    if args.all_private:
+        print(
+            "Updated public-parcel exclusions; preserved full private geometries",
+            flush=True,
+        )
     else:
         print(
             "Updated proximity, public-parcel exclusions, and managed-land clipping",

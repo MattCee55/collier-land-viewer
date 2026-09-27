@@ -410,6 +410,8 @@ def is_fl_public_parcel(properties):
     combined = normalize(owners + addresses)
     if owner == " USA ":
         return True
+    if owner == " SOUTH FLORIDA WATER MANAGEMENT ":
+        return True
     if any(term in owner for term in (
         " NATIONAL AUDUBON SOCIETY INC ",
         " SOUTH FL WATER MGMT DIST ",
