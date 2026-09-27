@@ -1871,7 +1871,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       if (flParcelOverviewFailed) return;
       if (!flParcelOverviewRequest){
         bumpLoading(1);
-        flParcelOverviewRequest = fetch('fl/parcel_overviews.json')
+        flParcelOverviewRequest = fetch('fl/parcel_overviews.json', { cache: 'no-cache' })
           .then(function(response){
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
@@ -1908,7 +1908,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     if (mtParcelOverviewFailed) return;
     if (!mtParcelOverviewRequest){
       bumpLoading(1);
-      mtParcelOverviewRequest = fetch('mt/parcel_overviews.json')
+      mtParcelOverviewRequest = fetch('mt/parcel_overviews.json', { cache: 'no-cache' })
         .then(function(response){
           if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json();
@@ -1973,7 +1973,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
 
   function fetchTileJson(url, kind, source){
     bumpLoading(1);
-    return fetch(url)
+    return fetch(url, { cache: kind === 'parcels' ? 'no-cache' : 'default' })
       .then(function(response){
         if (response.status === 404){
           recordTileOutcome(kind, source, 'missing');
