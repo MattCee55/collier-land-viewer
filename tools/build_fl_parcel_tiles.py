@@ -400,6 +400,8 @@ def is_fl_public_parcel(properties):
     address_fields = ("OWN_ADDR1", "O_ADDR1", "MAIL_ADDR1")
     owners = [str(properties.get(field) or "") for field in owner_fields]
     addresses = [str(properties.get(field) or "") for field in address_fields]
+    if any(_is_public_government_owner(value) for value in owners):
+        return True
 
     def normalize(values):
         return " " + re.sub(r"[^A-Z0-9]+", " ", " ".join(values).upper()).strip() + " "
@@ -466,6 +468,77 @@ def is_fl_public_parcel(properties):
     if " USA " in owner and any(" " + term + " " in combined for term in federal_agencies):
         return True
     return any(" " + term + " " in combined for term in public_terms)
+
+
+FLORIDA_COUNTY_OWNER_NAMES = (
+    "COLLIER COUNTY",
+    "LEE COUNTY",
+    "DADE COUNTY",
+    "MIAMI DADE COUNTY",
+)
+PUBLIC_GOVERNMENT_OWNER_TERMS = (
+    "PUBLIC",
+    "PUBLIC GOVT",
+    "PUBLIC GOVERNMENT",
+    "GOVT",
+    "GOVERNMENT",
+    "COUNTY OF",
+    "CITY OF",
+    "TOWN OF",
+    "BOARD OF COUNTY COMMISSIONERS",
+    "SCHOOL BOARD",
+    "SCHOOL DISTRICT",
+    "DIST SCHOOL BOARD",
+    "COMMUNITY DEVELOPMENT DISTRICT",
+    "COMMUNITY DEV DISTRICT",
+    "CMTY DEVT DISTRICT",
+    "COMM DEV DISTRICT",
+    "COM DEV DISTRICT",
+    "CDD",
+    "MOSQUITO CONTROL",
+    "WATER MANAGEMENT DISTRICT",
+    "WATER SEWER DISTRICT",
+    "HOUSING AUTHORITY",
+    "HOUSING DEVELOPMENT",
+    "AIRPORT AUTHORITY",
+    "SHERIFF",
+    "TAX COLLECTOR",
+    "PROPERTY APPRAISER",
+)
+PRIVATE_OWNER_SUFFIXES = (
+    " LLC",
+    " L L C",
+    " INC",
+    " INCORPORATED",
+    " CORP",
+    " CORPORATION",
+    " LLP",
+    " LP",
+    " LTD",
+    " LIMITED",
+    " COMPANY",
+    " ASSOCIATES",
+    " ASSOCIATION",
+)
+
+
+def _is_public_government_owner(value):
+    normalized = " " + re.sub(r"[^A-Z0-9]+", " ", str(value).upper()).strip() + " "
+    owner = normalized.strip()
+    if not owner:
+        return False
+    if owner in ("USA", "U S A"):
+        return True
+    if owner in FLORIDA_COUNTY_OWNER_NAMES or owner in {
+        name + " FL" for name in FLORIDA_COUNTY_OWNER_NAMES
+    } or owner in {name + " FLORIDA" for name in FLORIDA_COUNTY_OWNER_NAMES}:
+        return True
+    if owner.endswith(PRIVATE_OWNER_SUFFIXES):
+        return False
+    return any(
+        " " + term + " " in normalized
+        for term in PUBLIC_GOVERNMENT_OWNER_TERMS
+    )
 
 
 def normalized_properties(attributes, source):

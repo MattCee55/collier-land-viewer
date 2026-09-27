@@ -29,13 +29,13 @@ def polygon_parts(geometry):
     return []
 
 
-def has_public_ownership_type(properties):
+def has_state_or_federal_ownership_type(properties):
     owner_types = {
         value.strip().upper()
         for value in str(properties.get("OWNERTYPES") or "").split(",")
     }
     return any(
-        value in ("L", "S", "F") or value.startswith("F-")
+        value in ("S", "F") or value.startswith("F-")
         for value in owner_types
     )
 
@@ -43,13 +43,10 @@ def has_public_ownership_type(properties):
 def load_public_land_buffers(
     managed_path=DEFAULT_MANAGED_PATH,
     counties=("collier", "lee"),
-    public_owner_classifier=None,
     distance_miles=DEFAULT_PUBLIC_DISTANCE_MILES,
 ):
     if not math.isfinite(distance_miles) or distance_miles <= 0:
         raise ValueError("Public-land buffer distance must be positive")
-    if public_owner_classifier is None:
-        raise ValueError("A public-owner classifier is required")
 
     collection = json.loads(Path(managed_path).read_text(encoding="utf-8"))
     if collection.get("type") != "FeatureCollection":
@@ -67,7 +64,7 @@ def load_public_land_buffers(
         matching_counties = feature_counties.intersection(county_names)
         if not matching_counties:
             continue
-        if not has_public_ownership_type(properties) and not public_owner_classifier(properties):
+        if not has_state_or_federal_ownership_type(properties):
             continue
 
         geometry_data = feature.get("geometry")

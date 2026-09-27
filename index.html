@@ -1459,6 +1459,21 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   var PARCELID_FIELDS = ["PARCELID","PARCEL_ID","STRAP","PARCEL_NO","ALTKEY","parcelid"];
   var ACRES_FIELDS = ["ACRES","GIS_ACRES","LND_SQFOOT","TOT_LVG_AR"];
   var USE_FIELDS   = ["DOR_UC","USE_CODE","DORCODE","dor_uc"];
+  var FL_COUNTY_OWNER_NAMES = ["COLLIER COUNTY","LEE COUNTY","DADE COUNTY","MIAMI DADE COUNTY"];
+  var FL_PUBLIC_GOVERNMENT_OWNER_TERMS = [
+    "PUBLIC","PUBLIC GOVT","PUBLIC GOVERNMENT","GOVT","GOVERNMENT",
+    "COUNTY OF","CITY OF","TOWN OF","BOARD OF COUNTY COMMISSIONERS",
+    "SCHOOL BOARD","SCHOOL DISTRICT","DIST SCHOOL BOARD",
+    "COMMUNITY DEVELOPMENT DISTRICT","COMMUNITY DEV DISTRICT",
+    "CMTY DEVT DISTRICT","COMM DEV DISTRICT","COM DEV DISTRICT","CDD",
+    "MOSQUITO CONTROL","WATER MANAGEMENT DISTRICT","WATER SEWER DISTRICT",
+    "HOUSING AUTHORITY","HOUSING DEVELOPMENT","AIRPORT AUTHORITY",
+    "SHERIFF","TAX COLLECTOR","PROPERTY APPRAISER"
+  ];
+  var FL_PRIVATE_OWNER_SUFFIXES = [
+    " LLC"," L L C"," INC"," INCORPORATED"," CORP"," CORPORATION",
+    " LLP"," LP"," LTD"," LIMITED"," COMPANY"," ASSOCIATES"," ASSOCIATION"
+  ];
 
   var GOV_KEYWORDS = [
     "STATE OF FLORIDA","UNITED STATES","U S A","USA","U.S.A","COUNTY","CITY OF",
@@ -1490,6 +1505,24 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     var fields = ['OWN_NAME', 'O_NAME', 'NAME1', 'OWNER', 'OWNER_NAME',
                   'OWNERNAME', 'OWNERNAME1', 'OWN_ADDR1', 'O_ADDR1', 'MAIL_ADDR1'];
     var values = fields.map(function(field){ return props[field] || ''; });
+    var ownerNames = values.slice(0, 7).map(function(value){
+      return String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+    }).filter(function(value){ return value !== ''; });
+    for (var ownerIndex = 0; ownerIndex < ownerNames.length; ownerIndex++){
+      var normalizedOwner = ownerNames[ownerIndex];
+      if (normalizedOwner === 'USA' || normalizedOwner === 'U S A') return true;
+      if (FL_COUNTY_OWNER_NAMES.some(function(name){
+        return normalizedOwner === name || normalizedOwner === name + ' FL' ||
+          normalizedOwner === name + ' FLORIDA';
+      })) return true;
+      if (FL_PRIVATE_OWNER_SUFFIXES.some(function(suffix){
+        return normalizedOwner.endsWith(suffix);
+      })) continue;
+      var paddedOwner = ' ' + normalizedOwner + ' ';
+      if (FL_PUBLIC_GOVERNMENT_OWNER_TERMS.some(function(term){
+        return paddedOwner.indexOf(' ' + term + ' ') !== -1;
+      })) return true;
+    }
     var ownerValue = ' ' + values.slice(0, 7).join(' ').toUpperCase()
       .replace(/[^A-Z0-9]+/g, ' ').trim() + ' ';
     var value = ' ' + values.join(' ').toUpperCase()
@@ -1540,7 +1573,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     maxZoom: 20
   }).setView(CONFIG.START_CENTER, CONFIG.START_ZOOM);
 
-  L.control.zoom({ position: "bottomright" }).addTo(map);
+  L.control.zoom({ position: "bottomleft" }).addTo(map);
   L.control.attribution({ position: "bottomright", prefix: false }).addTo(map);
 
   var imagery = L.tileLayer(
