@@ -32,6 +32,12 @@ DEFAULT_OVERVIEW = ROOT / "fl" / "parcel_overviews.json"
 DEFAULT_MANAGED = ROOT / "flma" / "collier_lee_fire.json"
 COUNTIES = ("collier", "lee")
 DEFAULT_COUNTIES = ("collier",)
+LEE_BONITA_MANAGED_NAMES = (
+    "Imperial Flowway",
+    "Corkscrew Regional Ecosystem Watershed",
+    "Corkscrew Swamp Sanctuary",
+    "Corkscrew Regional Mitigation Bank",
+)
 BATCH_SIZE = 1000
 PROXIMITY_BATCH_SIZE = 5000
 MANAGED_EDGE_CLEARANCE_DEGREES = 1e-6
@@ -500,6 +506,7 @@ def main():
             args.managed,
             counties,
             distance_miles,
+            managed_names_by_county={"lee": LEE_BONITA_MANAGED_NAMES},
         )
         print(
             "Public-managed features: {}; buffer distance: {:.3f} miles".format(

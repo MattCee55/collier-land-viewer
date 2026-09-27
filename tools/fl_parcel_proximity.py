@@ -44,6 +44,7 @@ def load_public_land_buffers(
     managed_path=DEFAULT_MANAGED_PATH,
     counties=("collier", "lee"),
     distance_miles=DEFAULT_PUBLIC_DISTANCE_MILES,
+    managed_names_by_county=None,
 ):
     if not math.isfinite(distance_miles) or distance_miles <= 0:
         raise ValueError("Public-land buffer distance must be positive")
@@ -53,6 +54,12 @@ def load_public_land_buffers(
         raise ValueError("Managed-land source is not a FeatureCollection")
 
     county_names = tuple(str(county).casefold() for county in counties)
+    managed_name_filters = {
+        str(county).casefold(): {
+            str(name).strip().casefold() for name in names
+        }
+        for county, names in (managed_names_by_county or {}).items()
+    }
     geometries = {county: [] for county in county_names}
     feature_counts = {county: 0 for county in county_names}
     for feature in collection.get("features", []):
@@ -65,6 +72,15 @@ def load_public_land_buffers(
         if not matching_counties:
             continue
         if not has_state_or_federal_ownership_type(properties):
+            continue
+        feature_name = str(properties.get("MANAME") or "").strip().casefold()
+        matching_counties = {
+            county
+            for county in matching_counties
+            if county not in managed_name_filters
+            or feature_name in managed_name_filters[county]
+        }
+        if not matching_counties:
             continue
 
         geometry_data = feature.get("geometry")
