@@ -1006,7 +1006,7 @@ body.narrow #topbar .brand{ font-size:13px; }
 }
 
 /* ---- Panther picker ---- */
-#panther-cat{
+#panther-cat, #deer-cat{
   width:100%; padding:6px 8px; font-size:12px;
   font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
   border:1px solid var(--line); border-radius:7px;
@@ -1198,6 +1198,7 @@ textarea.pin-input{ resize:vertical; }
       <button id="btn-managed" class="btn active">Managed lands: on</button>
       <button id="btn-fire" class="btn">Fire points: off</button>
       <button id="btn-panther" class="btn">Panther: off</button>
+      <button id="btn-deer" class="btn">Deer: off</button>
       <button id="btn-elk" class="btn">Elk winter range: off</button>
       <button id="btn-mtfire" class="btn">Burns: off</button>
       <button id="btn-habitat" class="btn active">Habitat: on</button>
@@ -1221,6 +1222,14 @@ textarea.pin-input{ resize:vertical; }
         <h3>Panther tracks</h3>
         <select id="panther-cat"></select>
         <div class="legend-note" style="margin-top:6px">Each animal has its own colour. Solid-dash = adult, fine-dash = kitten. Enlarged dot = first fix, red = most recent.<br><br>FWC aerial telemetry, Jan 2024 &ndash; Feb 2026. Fixes average 4 days apart, taken at morning rest sites &mdash; lines show <b>sequence, not the route walked</b>. Pick one animal to isolate its track.</div>
+      </div>
+
+      <div id="deer-wrap" style="display:none">
+        <div class="hr"></div>
+        <h3>Collared deer tracks</h3>
+        <select id="deer-cat"></select>
+        <div id="deer-status" class="legend-note" style="margin-top:6px"></div>
+        <div class="legend-note" style="margin-top:6px">Bear Island, Big Cypress National Preserve: 26 collars and 15,345 fixes from Apr 30 &ndash; Aug 31, 2015. Fixes average 3&ndash;4 hours apart; lines show sequence, not the exact route traveled. This source does not include a separate Lee County track set. <a href="https://doi.org/10.5281/zenodo.5167653" target="_blank" rel="noopener">Zenodo dataset</a>.</div>
       </div>
 
       <div id="elk-wrap" style="display:none">
@@ -2898,6 +2907,143 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     drawPanther();
   };
 
+  map.createPane('deerPane');
+  map.getPane('deerPane').style.zIndex = 641;
+  var deerRenderer = L.canvas({ pane: 'deerPane', padding: 0.4 });
+  var deerGroup = L.layerGroup().addTo(map);
+  var deerOn = false;
+  var deerCat = 'ALL';
+  var deerData = null;
+  var deerLoadRequest = null;
+  var deerColor = {};
+  var DEER_PALETTE = ['#005F73','#A64B00','#007A53','#B23A48','#6B3D7A','#145E86',
+                      '#806000','#293F70','#007870','#694A2E','#37652C','#6D5D00',
+                      '#754A2C','#A12D42','#56234D','#6C237E','#782F20','#315477',
+                      '#7E344D','#263B69','#2E6A3E','#786000','#96394A','#4A4A4A',
+                      '#543A80','#303030'];
+
+  function initDeerColors(){
+    if (!deerData) return;
+    Object.keys(deerData).sort(function(left, right){ return Number(left) - Number(right); })
+      .forEach(function(id, index){ deerColor[id] = DEER_PALETTE[index % DEER_PALETTE.length]; });
+  }
+
+  function drawDeer(){
+    deerGroup.clearLayers();
+    if (!deerOn || !deerData) return;
+    var selected = deerCat !== 'ALL';
+    var collarIds = selected ? [deerCat] : Object.keys(deerData);
+
+    collarIds.forEach(function(id){
+      var fixes = deerData[id];
+      if (!fixes || !fixes.length) return;
+      var line = deerColor[id] || '#0072B2';
+
+      if (fixes.length > 1){
+        var latlngs = fixes.map(function(fix){ return [fix[1], fix[0]]; });
+        var lineWeight = selected ? 1.6 : 0.9;
+        L.polyline(latlngs, {
+          pane: 'deerPane', renderer: deerRenderer,
+          color: '#ffffff', weight: lineWeight + 1.2, opacity: 0.72, lineCap: 'round'
+        }).addTo(deerGroup);
+        L.polyline(latlngs, {
+          pane: 'deerPane', renderer: deerRenderer,
+          color: line, weight: lineWeight, opacity: 0.96,
+          dashArray: '5,5', lineCap: 'round'
+        }).addTo(deerGroup);
+      }
+
+      fixes.forEach(function(fix, index){
+        var first = index === 0;
+        var last = index === fixes.length - 1;
+        var endpoint = first || last;
+        var radius = selected ? (endpoint ? 4 : 1.3) : (endpoint ? 2.7 : 0.8);
+        var fill = last && fixes.length > 1 ? '#E24B4A' : line;
+        L.circleMarker([fix[1], fix[0]], {
+          pane: 'deerPane', renderer: deerRenderer,
+          radius: radius, weight: 0.55, color: '#fff', fillColor: fill, fillOpacity: 0.95
+        }).bindPopup(
+          '<div class="hab-pop"><h4><span class="chip" style="background:' + line + '"></span>' +
+          'Deer ' + escapeHtml(id) + '</h4>' +
+          '<div class="cat">' + escapeHtml(fix[2]) + '</div>' +
+          '<div class="cat">Fix ' + (index + 1) + ' of ' + fixes.length +
+          (first ? ' &middot; first' : last && fixes.length > 1 ? ' &middot; most recent' : '') + '</div>' +
+          '<div class="fire-note" style="margin-top:5px">GPS fixes average 3&ndash;4 hours apart. ' +
+          'The line shows sequence, not the exact route traveled.</div></div>'
+        ).addTo(deerGroup);
+      });
+    });
+  }
+
+  function buildDeerPicker(){
+    var sel = document.getElementById('deer-cat');
+    if (!sel || !deerData) return;
+    var collars = Object.keys(deerData).map(function(id){
+      return { id: id, count: deerData[id].length };
+    }).sort(function(left, right){ return right.count - left.count; });
+    var html = '<option value="ALL">All Deer (' + collars.length + ')</option>';
+    collars.forEach(function(collar){
+      html += '<option value="' + escapeHtml(collar.id) + '">Deer ' + escapeHtml(collar.id) +
+              ' \u2014 ' + collar.count + ' fixes</option>';
+    });
+    sel.innerHTML = html;
+    deerCat = 'ALL';
+    sel.value = 'ALL';
+    sel.addEventListener('change', function(){
+      deerCat = this.value;
+      drawDeer();
+      if (deerCat !== 'ALL' && deerData[deerCat]){
+        var fixes = deerData[deerCat];
+        map.fitBounds(L.latLngBounds(fixes.map(function(fix){ return [fix[1], fix[0]]; })), { padding: [40,40] });
+        if (isSmallScreen()) setPanelOpen(false);
+      }
+    });
+  }
+
+  function loadDeerData(){
+    if (deerData || deerLoadRequest) return;
+    var status = document.getElementById('deer-status');
+    status.textContent = 'Loading Big Cypress deer telemetry...';
+    deerLoadRequest = fetch('deer/big_cypress_2015.json', { cache: 'default' })
+      .then(function(response){
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function(payload){
+        if (!payload || !payload.animals || typeof payload.animals !== 'object')
+          throw new Error('Missing deer track data.');
+        deerData = payload.animals;
+        initDeerColors();
+        buildDeerPicker();
+        var metadata = payload.metadata || {};
+        var collarCount = metadata.collar_count || Object.keys(deerData).length;
+        var fixCount = metadata.fix_count || Object.keys(deerData).reduce(function(total, id){
+          return total + deerData[id].length;
+        }, 0);
+        status.textContent = Number(collarCount).toLocaleString() + ' collars \u00b7 ' +
+          Number(fixCount).toLocaleString() + ' fixes loaded.';
+        deerLoadRequest = null;
+        if (deerOn) drawDeer();
+      })
+      .catch(function(error){
+        deerLoadRequest = null;
+        status.textContent = 'Unable to load deer tracks. Check that the app server is running.';
+        console.error('Deer telemetry load failed:', error);
+      });
+  }
+
+  document.getElementById('btn-deer').onclick = function(){
+    deerOn = !deerOn;
+    this.classList.toggle('active', deerOn);
+    this.textContent = 'Deer: ' + (deerOn ? 'on' : 'off');
+    document.getElementById('deer-wrap').style.display = deerOn ? '' : 'none';
+    if (deerOn){
+      if (deerData) drawDeer();
+      else loadDeerData();
+    }
+    else deerGroup.clearLayers();
+  };
+
   // ---------------- Elk winter range (MT FWP) ----------------
   map.createPane('elkPane');
   map.getPane('elkPane').style.zIndex = 385;
@@ -2969,7 +3115,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
         relief: reliefOn,
         layers: {
           managed: managedOn, habitat: habitatOn, parcels: parcelsOn,
-          fire: fireOn, panther: pantherOn, dryness: drynessOn, mtfire: mtFireOn, oak: oakOn, trails: trailsOn,
+          fire: fireOn, panther: pantherOn, deer: deerOn, dryness: drynessOn, mtfire: mtFireOn, oak: oakOn, trails: trailsOn,
           roads: roadsOn, elk: elkOn, pins: pinsOn
         }
       }));
@@ -4000,26 +4146,31 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     if (!mt && mtFireOn) document.getElementById('btn-mtfire').click();
     if (!mt && roadsOn)  document.getElementById('btn-roads').click();
     var pantherButton = document.getElementById('btn-panther');
+    var deerButton = document.getElementById('btn-deer');
     var oakButton = document.getElementById('btn-oak');
     var drynessButton = document.getElementById('btn-dryness');
     var fireButton = document.getElementById('btn-fire');
     if (pantherButton) pantherButton.style.display = (mt || stVincent) ? 'none' : '';
+    if (deerButton) deerButton.style.display = (mt || stVincent) ? 'none' : '';
     if (oakButton) oakButton.style.display = (mt || stVincent) ? 'none' : '';
     if (drynessButton) drynessButton.style.display = mt ? 'none' : '';
     if (fireButton) fireButton.style.display = mt ? 'none' : '';
     if (stVincent){
       if (pantherOn) pantherButton.click();
+      if (deerOn && deerButton) deerButton.click();
       if (oakOn) oakButton.click();
       document.getElementById('panther-wrap').style.display = 'none';
+      document.getElementById('deer-wrap').style.display = 'none';
       document.getElementById('oak-wrap').style.display = 'none';
     }
     if (mt){
       // collapse any Florida-only layer that was left on
       if (pantherOn) document.getElementById('btn-panther').click();
+      if (deerOn) document.getElementById('btn-deer').click();
       if (drynessOn) document.getElementById('btn-dryness').click();
       if (oakOn)     document.getElementById('btn-oak').click();
       if (fireOn)    document.getElementById('btn-fire').click();
-      ['panther-wrap','oak-wrap','dry-legend-wrap','fire-legend-wrap'].forEach(function(id){
+      ['panther-wrap','deer-wrap','oak-wrap','dry-legend-wrap','fire-legend-wrap'].forEach(function(id){
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
@@ -4040,6 +4191,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
       parcels: false,
       fire: wildlife && !mt,
       panther: wildlife && !mt && !stVincent,
+      deer: wildlife && !mt && !stVincent,
       dryness: false,
       elk: wildlife && mt,
       mtfire: wildlife && mt,
@@ -4049,12 +4201,12 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     };
     var current = {
       managed: managedOn, habitat: habitatOn, parcels: parcelsOn,
-      fire: fireOn, panther: pantherOn, dryness: drynessOn,
+      fire: fireOn, panther: pantherOn, deer: deerOn, dryness: drynessOn,
       elk: elkOn, mtfire: mtFireOn, roads: roadsOn, oak: oakOn, trails: trailsOn
     };
     var buttonIds = {
       managed: 'btn-managed', habitat: 'btn-habitat', parcels: 'btn-parcels',
-      fire: 'btn-fire', panther: 'btn-panther', dryness: 'btn-dryness',
+      fire: 'btn-fire', panther: 'btn-panther', deer: 'btn-deer', dryness: 'btn-dryness',
       elk: 'btn-elk', mtfire: 'btn-mtfire', roads: 'btn-roads',
       oak: 'btn-oak', trails: 'btn-trails'
     };
@@ -4095,6 +4247,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
           ['parcels',  function(){ return parcelsOn; }, 'btn-parcels'],
           ['fire',     function(){ return fireOn;    }, 'btn-fire'],
           ['panther',  function(){ return pantherOn; }, 'btn-panther'],
+          ['deer',     function(){ return deerOn;    }, 'btn-deer'],
           ['dryness',  function(){ return drynessOn; }, 'btn-dryness'],
           ['elk',      function(){ return elkOn;     }, 'btn-elk'],
           ['mtfire',   function(){ return mtFireOn;  }, 'btn-mtfire'],
@@ -4114,7 +4267,7 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     stateReady = true;
     map.on('moveend zoomend', writeState);
     // every layer button also persists
-    ['btn-managed','btn-habitat','btn-parcels','btn-fire','btn-panther',
+    ['btn-managed','btn-habitat','btn-parcels','btn-fire','btn-panther','btn-deer',
      'btn-dryness','btn-elk','btn-mtfire','btn-roads','btn-oak','btn-trails','btn-pins','btn-relief'].forEach(function(id){
       var b = document.getElementById(id);
       if (b) b.addEventListener('click', function(){ setTimeout(writeState, 0); });
