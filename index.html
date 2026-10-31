@@ -1066,9 +1066,23 @@ body.narrow #topbar .brand{ font-size:13px; }
   font-size:11.5px; line-height:1.5; color:var(--ink);
   background:#f1efe8; border-radius:6px; padding:6px 8px; margin-top:5px;
 }
-#btn-measure.active, #btn-elev.active{
+#btn-measure.active, #btn-elev.active, #btn-gps-coordinates.active{
   background:var(--clay); border-color:#8a4420; color:#fff;
 }
+.gps-search-label{
+  display:block; margin-top:7px; font-size:11px; font-weight:700;
+}
+.gps-search-row{
+  display:flex; align-items:stretch; gap:5px; margin-top:5px;
+}
+.gps-search-row input{
+  min-width:0; flex:1; padding:6px 7px; font-size:11.5px;
+  font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;
+  border:1px solid var(--line); border-radius:6px;
+  background:#fff; color:var(--ink);
+}
+.gps-search-row .btn{ width:auto; flex:none; margin-top:0; padding:6px 9px; }
+#btn-copy-gps-coordinates:disabled{ opacity:.55; cursor:not-allowed; }
 
 /* ---- Print: map only, no chrome ---- */
 @media print{
@@ -1372,6 +1386,19 @@ textarea.pin-input{ resize:vertical; }
       <button id="btn-elev" class="btn">&#9650; Elevation</button>
       <div id="elev-wrap" style="display:none">
         <div id="elev-out" class="tool-out"><span class="legend-empty">Tap a point on the map.</span></div>
+      </div>
+      <button id="btn-gps-coordinates" class="btn" type="button" aria-pressed="false">GPS coordinates &amp; search</button>
+      <div id="gps-coordinates-wrap" style="display:none">
+        <form id="gps-coordinate-search-form" novalidate>
+          <label class="gps-search-label" for="gps-coordinate-search">Search HD 270 / HD 321</label>
+          <div class="gps-search-row">
+            <input id="gps-coordinate-search" type="text" placeholder="45.96310, -113.91110" autocomplete="off" aria-label="Latitude and longitude">
+            <button class="btn" type="submit">Go</button>
+          </div>
+        </form>
+        <div class="legend-note">Enter decimal latitude, longitude or a DMS pair, such as 45° 57′ 47″ N, 113° 54′ 40″ W. You can also click the map.</div>
+        <div id="gps-coordinates-out" class="tool-out" role="status" aria-live="polite">Search coordinates or click a Montana point to see its GPS position and FWP region.</div>
+        <button id="btn-copy-gps-coordinates" class="btn" type="button" disabled>Copy GPS coordinates</button>
       </div>
       <button id="btn-share-view" class="btn">&#128279; Copy link to this view</button>
       <button id="btn-print" class="btn">&#128424; Print / save image</button>
@@ -3700,8 +3727,178 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
     if (!elevOn && elevMarker){ map.removeLayer(elevMarker); elevMarker = null; }
   });
 
-  // shared click handling for measure + elevation (pins handled separately above)
+  // ---------------- GPS coordinate inspector and search ----------------
+  var gpsOn = false;
+  var gpsLatLng = null;
+  var gpsMarker = null;
+  var gpsButton = document.getElementById('btn-gps-coordinates');
+  var gpsWrap = document.getElementById('gps-coordinates-wrap');
+  var gpsOut = document.getElementById('gps-coordinates-out');
+  var gpsSearchForm = document.getElementById('gps-coordinate-search-form');
+  var gpsSearchInput = document.getElementById('gps-coordinate-search');
+  var copyGpsButton = document.getElementById('btn-copy-gps-coordinates');
+
+  function parseGpsCoordinatePart(part){
+    var match = String(part).trim().toUpperCase().match(
+      /^([NSEW])?\s*([+-]?\d{1,3}(?:\.\d+)?)\s*(?:°|º|D)?\s*(?:(\d{1,2}(?:\.\d+)?)\s*(?:['\u2032M])?\s*(?:(\d{1,2}(?:\.\d+)?)\s*(?:["\u2033])?)?)?\s*([NSEW])?\s*$/
+    );
+    if (!match || (match[1] && match[5] && match[1] !== match[5])) return null;
+    var hemisphere = match[1] || match[5] || '';
+    var explicitNegative = /^\s*-/.test(match[2]);
+    var explicitPositive = /^\s*\+/.test(match[2]);
+    var sign = explicitNegative ? -1 : 1;
+    if (hemisphere){
+      var hemisphereSign = /[SW]/.test(hemisphere) ? -1 : 1;
+      if ((explicitNegative && hemisphereSign > 0) || (explicitPositive && hemisphereSign < 0)) return null;
+      sign = hemisphereSign;
+    }
+    var degrees = Math.abs(parseFloat(match[2]));
+    var minutes = match[3] ? parseFloat(match[3]) : 0;
+    var seconds = match[4] ? parseFloat(match[4]) : 0;
+    if (!isFinite(degrees) || minutes >= 60 || seconds >= 60) return null;
+    return {
+      value: sign * (degrees + minutes / 60 + seconds / 3600),
+      axis: /[NS]/.test(hemisphere) ? 'lat' : (/[EW]/.test(hemisphere) ? 'lng' : null)
+    };
+  }
+
+  function parseGpsCoordinates(value){
+    var parts = String(value).trim().split(/[;,]/).map(function(part){ return part.trim(); });
+    if (parts.length !== 2 || !parts[0] || !parts[1]){
+      throw new Error('Enter latitude and longitude separated by a comma.');
+    }
+    var first = parseGpsCoordinatePart(parts[0]);
+    var second = parseGpsCoordinatePart(parts[1]);
+    if (!first || !second) throw new Error('Use decimal degrees or degrees, minutes and seconds.');
+    var latitude, longitude;
+    if (first.axis === 'lat' && second.axis === 'lng'){
+      latitude = first.value; longitude = second.value;
+    } else if (first.axis === 'lng' && second.axis === 'lat'){
+      latitude = second.value; longitude = first.value;
+    } else if (first.axis === 'lat' && !second.axis){
+      latitude = first.value; longitude = second.value;
+    } else if (first.axis === 'lng' && !second.axis){
+      longitude = first.value; latitude = second.value;
+    } else if (!first.axis && second.axis === 'lat'){
+      latitude = second.value; longitude = first.value;
+    } else if (!first.axis && second.axis === 'lng'){
+      longitude = second.value; latitude = first.value;
+    } else if (!first.axis && !second.axis){
+      latitude = first.value; longitude = second.value;
+    } else {
+      throw new Error('Use N/S for latitude and E/W for longitude.');
+    }
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180){
+      throw new Error('Latitude must be within 90°; longitude must be within 180°.');
+    }
+    return L.latLng(latitude, longitude);
+  }
+
+  function formatGpsDms(value, positiveHemisphere, negativeHemisphere){
+    var absolute = Math.abs(value);
+    var degrees = Math.floor(absolute);
+    var tenthsOfSeconds = Math.round((absolute - degrees) * 36000);
+    var minutes = Math.floor(tenthsOfSeconds / 600);
+    var seconds = ((tenthsOfSeconds % 600) / 10).toFixed(1);
+    if (minutes === 60){ degrees++; minutes = 0; }
+    return degrees + '\u00b0 ' + String(minutes).padStart(2, '0') + '\u2032 ' +
+           seconds.padStart(4, '0') + '\u2033 ' +
+           (value < 0 ? negativeHemisphere : positiveHemisphere);
+  }
+
+  function inspectGpsCoordinates(latlng){
+    gpsLatLng = L.latLng(latlng.lat, latlng.lng);
+    var decimal = latlng.lat.toFixed(6) + ', ' + latlng.lng.toFixed(6);
+    var dms = formatGpsDms(latlng.lat, 'N', 'S') + ' · ' +
+              formatGpsDms(latlng.lng, 'E', 'W');
+    var districtHits = pointInLayerGroups(latlng, [districtGroup]);
+    var area = 'Outside the displayed HD 270 / HD 321 boundaries.';
+    if (districtHits.length){
+      var district = districtHits[0];
+      area = 'Montana HD ' + escapeHtml(district.DISTRICT || '—');
+      if (district.REG) area += ' · FWP Region ' + escapeHtml(district.REG);
+      var regionKey = String(district.DISTRICT) === '270' ? 'mt270' :
+                      String(district.DISTRICT) === '321' ? 'mt321' : null;
+      if (regionKey && regionSelect.value !== regionKey){
+        regionSelect.value = regionKey;
+        updateZoneSummary(regionKey);
+        renderTileStatus();
+      }
+    }
+    gpsOut.innerHTML = '<div><b>Decimal degrees (WGS84)</b><br>' + decimal + '</div>' +
+      '<div style="margin-top:5px"><b>Degrees / minutes / seconds</b><br>' + dms + '</div>' +
+      '<div style="margin-top:5px"><b>Area</b><br>' + area + '</div>';
+    copyGpsButton.disabled = false;
+    if (gpsMarker) gpsMarker.setLatLng(latlng);
+    else gpsMarker = L.circleMarker(latlng, {
+      radius: 6, color: '#fff', weight: 2, fillColor: '#c0392b', fillOpacity: 1
+    }).addTo(map);
+  }
+
+  gpsSearchForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    if (gpsMarker){ map.removeLayer(gpsMarker); gpsMarker = null; }
+    gpsLatLng = null;
+    copyGpsButton.disabled = true;
+    var latlng;
+    try {
+      latlng = parseGpsCoordinates(gpsSearchInput.value);
+    } catch(error){
+      gpsOut.textContent = error.message;
+      copyGpsButton.disabled = true;
+      return;
+    }
+    var districtHits = pointInLayerGroups(latlng, [districtGroup]);
+    if (!districtHits.length){
+      gpsOut.textContent = districtGroup.getLayers().length < 2
+        ? 'Montana district boundaries are still loading. Try again in a moment.'
+        : 'No match in HD 270 or HD 321. Check the coordinate or choose a point inside either boundary.';
+      copyGpsButton.disabled = true;
+      return;
+    }
+    var districtNumber = String(districtHits[0].DISTRICT);
+    var regionKey = districtNumber === '270' ? 'mt270' :
+                    districtNumber === '321' ? 'mt321' : null;
+    if (!regionKey){
+      gpsOut.textContent = 'That point is outside the Montana districts supported by this viewer.';
+      copyGpsButton.disabled = true;
+      return;
+    }
+    regionSelect.value = regionKey;
+    updateZoneSummary(regionKey);
+    renderTileStatus();
+    setBasemap('imagery');
+    map.setView(latlng, Math.max(map.getZoom(), 15));
+    inspectGpsCoordinates(latlng);
+  });
+
+  gpsButton.addEventListener('click', function(){
+    gpsOn = !gpsOn;
+    if (gpsOn){
+      if (dropArmed) document.getElementById('btn-drop').click();
+      if (measureOn) document.getElementById('btn-measure').click();
+      if (elevOn) document.getElementById('btn-elev').click();
+      gpsOut.textContent = 'Search coordinates or click a Montana point to see its GPS position and FWP region.';
+      copyGpsButton.disabled = true;
+    } else {
+      if (gpsMarker){ map.removeLayer(gpsMarker); gpsMarker = null; }
+      gpsLatLng = null;
+    }
+    this.classList.toggle('active', gpsOn);
+    this.setAttribute('aria-pressed', gpsOn ? 'true' : 'false');
+    this.textContent = gpsOn ? 'GPS coordinates: click map' : 'GPS coordinates & search';
+    gpsWrap.style.display = gpsOn ? '' : 'none';
+    document.getElementById('map').style.cursor = gpsOn ? 'crosshair' : '';
+  });
+
+  copyGpsButton.addEventListener('click', function(){
+    if (!gpsLatLng) return;
+    copyText(gpsLatLng.lat.toFixed(6) + ', ' + gpsLatLng.lng.toFixed(6), 'GPS coordinates copied.');
+  });
+
+  // Map clicks select GPS coordinates, measure points or elevation points.
   map.on('click', function(e){
+    if (gpsOn){ inspectGpsCoordinates(e.latlng); return; }
     if (measureOn){ measurePts.push(e.latlng); redrawMeasure(); return; }
     if (elevOn){ lookupElevation(e.latlng); return; }
   });
@@ -4124,6 +4321,11 @@ var OAK_VERIFIED = {"type":"FeatureCollection","features":[{"type":"Feature","pr
   function updateRegionalControls(){
     var mt = inMontana();
     var stVincent = regionSelect.value === 'stvincent';
+    var gpsCoordinatesButton = document.getElementById('btn-gps-coordinates');
+    if (gpsCoordinatesButton){
+      gpsCoordinatesButton.style.display = mt ? '' : 'none';
+      if (!mt && gpsOn) gpsCoordinatesButton.click();
+    }
     var floridaTrailLegend = document.getElementById('trails-fl-legend');
     var montanaTrailLegend = document.getElementById('trails-mt-legend');
     if (floridaTrailLegend) floridaTrailLegend.style.display = mt ? 'none' : '';
